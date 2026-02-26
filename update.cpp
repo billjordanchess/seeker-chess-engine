@@ -48,18 +48,12 @@ void UpdatePiece(const int s, const int p, const int from, const int to)
 	index[to] = index[from];
 	pieces[s][p][index[to]] = to;
 	kingloc[s] = (p == K) ? to : kingloc[s];
-
 	//Debug(18);
 	//assert(p < 6);
 }
 
 void RemovePiece(const int s, const int p, const int sq)
 {
-	if (p > 5) {
-		printf(" remove ");
-		Algebraic(sq);
-		z();
-	}
 	//assert(p < 6);
 	const BITBOARD m = not_mask[sq];
     AddKey(s, p, sq);
@@ -69,7 +63,7 @@ void RemovePiece(const int s, const int p, const int sq)
     bit_pieces[s][p] &= m;
 
     if (p == P) {
-        pawn_mat[s]--;
+        pawn_mat[s] -= P_VALUE;
         AddPawnKey(s, sq);
         return;
     }
@@ -123,7 +117,7 @@ void AddPiece(const int s, const int p, const int sq)
 
 	if (p == P)
 	{
-		pawn_mat[s]++;
+		pawn_mat[s] += P_VALUE;
 		AddPawnKey(s, sq);
 		return;
 	}
