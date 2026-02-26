@@ -1,7 +1,5 @@
 #include "globals.h"
 
-//#define BITBOARD unsigned __int64
-
 constexpr int  WHITE_KING_CASTLE = 1;
 constexpr int  WHITE_QUEEN_CASTLE = 2;
 constexpr int  BLACK_KING_CASTLE = 4;
@@ -27,13 +25,6 @@ int hist_to[2][6][64];
 
 int max_depth;
 
-//BITBOARD max_time;
-//BITBOARD start_time;
-//BITBOARD stop_time;
-U64 max_time;
-U64 start_time;
-U64 stop_time;
-
 BITBOARD nodes;
 BITBOARD cut_nodes;
 BITBOARD cut_tt_nodes;
@@ -42,9 +33,6 @@ BITBOARD first_nodes;
 int av_nodes;
 
 void ClearContHistory();
-
-int centi_pawns[9] = { 0,100,200,300,400,500,600,700,800 };
-int centi_pieces[104];
 
 int castle_mask[64] = {
 	13, 15, 15, 15, 12, 15, 15, 14,
@@ -120,8 +108,6 @@ int defended_passed[2][64];
 
 int castle_start[64];
 int castle_dest[64];
-
-int piece_value[6] = { 1, 3, 3, 5, 9, 0 };
 
 int pawn_score[64] = {
 	  0,   0,   0,   0,   0,   0,   0,   0,
@@ -351,7 +337,6 @@ void SetUp()
 	SetBits();
 	SetScores();
 	SetKingPawnTable();
-	//PrecomputeShieldLUTs(0);
 	SetCastle();
 	SetPassed();
 	SetPawnless();
@@ -390,12 +375,12 @@ void NewPosition()
 	bit_all = 0;
 
 	memset(total, 0, sizeof(total));
-    memset(pieces, 0, sizeof(pieces));
-	
+	memset(pieces, 0, sizeof(pieces));
+
 	first_move[0] = 0;
 
 	currentkey = 0;
-    currentpawnkey = currentpawnlock = 0;
+	currentpawnkey = currentpawnlock = 0;
 }
 
 void SetBoard()
@@ -533,8 +518,6 @@ void SetScores()
 		PawnBlocked[0][x] = pawn_blocked[x];
 		PawnBlocked[1][x] = pawn_blocked[Flip[x]];
 	}
-	for (int x = 0; x < 100; x++)
-		centi_pieces[x] = x * 100;
 }
 
 void SetKingPawnTable()
@@ -596,11 +579,12 @@ void SetKingPawnTable()
 void SetFromTo()
 {
 	for (int s = 0; s < 2; s++)
-			for (int p = 0; p < 6; p++)
-					for (int x = 0; x < 64; x++)
-					{
-						hist_from[s][p][x] = -PieceScore[s][p][x];
-						hist_to[s][p][x] = PieceScore[s][p][x];
-					}
+		for (int p = 0; p < 6; p++)
+			for (int x = 0; x < 64; x++)
+			{
+				hist_from[s][p][x] = -PieceScore[s][p][x];
+				hist_to[s][p][x] = PieceScore[s][p][x];
+			}
 }
+
 
