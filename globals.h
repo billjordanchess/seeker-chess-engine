@@ -80,7 +80,7 @@ constexpr int KILLER1_SCORE = 80000;
 constexpr int KILLER2_SCORE = 40000;
 constexpr int EN_PRISE_SCORE = 10000;
 
-constexpr int BLUNDER_SCORE = 1000000;
+constexpr int BLUNDER_SCORE = 10000;
 
 constexpr int HISTORY_LIMIT = 800000;
 
@@ -137,6 +137,9 @@ constexpr int WEST = 6;
 constexpr int NW = 7;
 
 constexpr int DRAWN = 77;
+
+constexpr int  WON_ENDGAME = 9900;
+constexpr int  LOST_ENDGAME = -9900;
 
 extern int fixed_depth;
 
@@ -240,13 +243,13 @@ void UnMakeMove();
 void GenCaptures(const int, const int, BITBOARD);
 
 /* Search.cpp */
-move_data Think(int);
-int QuietSearch(const int s, const int xs, int alpha, int beta);
+move_data Think(int, int);
+int QuietSearch(int alpha, int beta);
 int Reps();
 int Reps2();
 
 /* eval.cpp */
-int Eval(const int alpha, const int beta);
+int Eval(const int s, const int xs, const int alpha, const int beta);
 
 /* main.cpp */
 U64 GetTime();
@@ -521,8 +524,6 @@ void GenQuietMoves(const int s, const int xs, const BITBOARD not_captured, BITBO
 bool Attack(const int s, const int sq);
 bool CheckAttack(const int s, const int sq);
 bool LineAttack(const int s, const int sq);
-bool isPinned(const int s, const int sq, const int pinned, BITBOARD);
-bool isPinnedLinePiece(const int s, const int sq, const int pinned, const int, BITBOARD);
 
 void UpdatePawn(const int s, const int from, const int to);
 void UpdatePiece(const int s, const int p, const int from, const int to);
@@ -572,19 +573,9 @@ extern BITBOARD ep_hash[64];
 
 void ShowAllEval(int ply);
 
-int EvalPawnless();
+int EvalPawnless(const int, const int);
 
 int Check(const int s, const int sq);
-
-extern int centi_pawns[9];
-extern int centi_pieces[104];
-
-constexpr int PVAL = 1;
-constexpr int NVAL = 2;
-constexpr int BVAL = 3;
-constexpr int RVAL = 5;
-constexpr int QVAL = 9;
-constexpr int BBVAL = 6;
 
 constexpr int P_VALUE = 100;
 constexpr int N_VALUE = 200;
@@ -593,10 +584,8 @@ constexpr int R_VALUE = 500;
 constexpr int Q_VALUE = 900;
 constexpr int BB_VALUE = 600;
 
-extern int p_value[6];
-
 int GetLowestAttacker(const int s, const int sq);
-int GetNextAttacker(const int s, const int, const int sq, const BITBOARD);
+int GetNextAttackerSquare(const int s, const int, const int sq, const BITBOARD);
 int SEE(int s, const int a, const int sq, const BITBOARD p1, const BITBOARD p2);
 
 void HashTest();
@@ -651,6 +640,11 @@ int NextHighBit(BITBOARD bb);
 U64 BishopAttacks(int sq, U64 occ);
 U64 RookAttacks(int sq, U64 occ);
 U64 QueenAttacks(int sq, U64 occ);
+
+bool IsCheck(const int p, const int sq, const int king);
+
+extern bool stop_search;
+
 
 
 
