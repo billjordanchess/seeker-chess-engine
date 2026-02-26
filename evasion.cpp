@@ -15,9 +15,6 @@ void BlockCheck(const int from, const int to, const int score);
 void GenEP(BITBOARD);
 
 void AddCapture(const int from, const int to, const int score);
-
-void EvadeQuiet(const int checker, BITBOARD);
-void EvadeCapture(const int checker, BITBOARD);
 void EvadeDouble();
 
 bool IsMate(const int checker);
@@ -26,11 +23,11 @@ BITBOARD PinnersPossible(const int s, const int xs);
 
 void EvadeDouble()
 {
-	move_count = first_move[ply + 1];
+	move_count = first_move[ply];
 	int k = kingloc[side];
 	int to;
 	BITBOARD b1 = bit_kingmoves[k] & ~bit_units[side];
-	//printf("\n start ");q
+	
 	while (b1)
 	{
 		to = NextBit(b1);
@@ -42,11 +39,8 @@ void EvadeDouble()
 			else
 				AddCapture(k, to, kx[b[to]]);
 		}
-		//Alg(move_list[move_count-1].from, move_list[move_count-1].to);
-		//printf(" ");
 	}
 	first_move[ply + 1] = move_count;
-	//z();
 }
 
 void BlockCheck(const int from, const int to, const int score)
@@ -312,7 +306,7 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 
 bool IsMate(const int checker)
 {
-	int from, j, x, to;
+	int from, x, to;
 	int k = kingloc[side];
 	int check_piece = b[checker];
 
@@ -320,15 +314,27 @@ bool IsMate(const int checker)
 	//Alg(checker, k);
 	//z();
 
-	for (j = 0; j < king_total[k]; j++)
+	BITBOARD b1 = bit_kingmoves[k] & bit_units[xside];
+
+	while (b1)
 	{
-		to = kingmoves[k][j];
-		if (b[to] == EMPTY && !(Attack2(xside, to, bit_all & ~mask[k], ~mask[k])))
-		{
+		to = NextBit(b1);
+		b1 &= b1 - 1;
+		if (!(Attack2(xside, to, bit_all & ~mask[k], ~mask[k])))
 			return false;
-		}
 	}
-	BITBOARD b1, b2;
+
+	b1 = bit_kingmoves[k] & ~bit_all;
+
+	while (b1)
+	{
+		to = NextBit(b1);
+		b1 &= b1 - 1;
+		if (!(Attack2(xside, to, bit_all & ~mask[k], ~mask[k])))
+			return false;
+	}
+
+	BITBOARD b2;
 
 	if (!(bit_between[checker][k]))
 	{
