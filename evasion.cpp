@@ -423,23 +423,3 @@ bool IsMate(const int checker)
 	}
 	return true;
 }
-
-/*
-BITBOARD pins = PinnersPossible(side, xside);
-
-	b1 = pins;
-	BITBOARD pin_mask = 0;
-
-	while (b1)
-	{
-		int to = NextBit(b1);
-		BITBOARD b2 = bit_between[to][k] & bit_units[side];
-		if (CountBits(b2) != 1 || (bit_between[to][k] & bit_units[xside]))
-		{
-			pins &= not_mask[to];
-		}
-		else
-			pin_mask |= mask[NextBit(b2)];
-		b1 &= b1 - 1;
-	}
-	*/
