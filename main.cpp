@@ -1,3 +1,5 @@
+#define _CRT_SECURE_NO_WARNINGS
+
 #include "stdafx.h"
 #include <signal.h>
 #include <stdio.h>
@@ -21,6 +23,8 @@ BITBOARD GetPinMask(const int s, const int xs);
 void BuildAttackMap();
 
 void GenRoot(const int, const int);
+
+void uci();
 
 const int White = 0;
 const int  Black = 1;
@@ -114,8 +118,8 @@ int main()
 
 	int m;
 	int turns = 0;
-	int t;
-	int lookup;
+	U64 t;
+	
 	int from, to, flags;
 
 	BITBOARD nps;
@@ -148,7 +152,7 @@ int main()
 		{
 			player[side] = 1;
 			start_time = GetTime();//
-			engine_move = Think(fixed_time);
+			engine_move = Think(fixed_time, max_depth);
 			turns++;
 
 			currentkey = GetKey();
@@ -276,14 +280,14 @@ int main()
 		}
 		if (s == "sd")
 		{
-			scanf("%d", &max_depth);
+			scanf_s("%d", &max_depth);
 			max_time = 1 << 25;
 			fixed_depth = 1;
 			continue;
 		}
 		if (s == "st")
 		{
-			scanf("%d", &max_time);
+			scanf_s("%ld", &max_time);
 			max_time *= 1000;
 			max_depth = MAX_PLY;
 			fixed_time = 1;
@@ -318,12 +322,17 @@ int main()
 			xboard();
 			break;
 		}
+		if (s == "uci")
+		{
+			uci();
+			break;
+		}
 
 		ply = 0;
 		first_move[0] = 0;
 		GenRoot(side, xside);
 		//GenCheck();
-		ShowAll(ply);
+		//ShowAll(ply);
 		m = ParseMove(s);
 		from = move_list[m].from;
 		to = move_list[m].to;
@@ -524,7 +533,7 @@ void xboard()
 		fflush(stdout);
 		if (side == computer_side)
 		{
-			engine_move = Think(fixed_time);
+			engine_move = Think(fixed_time, max_depth);
 			SetMaterial();
 			
 			GenCheck();
@@ -647,7 +656,7 @@ void xboard()
 		if (command == "hint")
 		//if (!strcmp(command, "hint"))
 		{
-			engine_move = Think(fixed_time);
+			engine_move = Think(fixed_time, max_depth);
 			currentkey = GetKey();
 			lookup = LookUp2(side);
 			if (engine_move.from == 0 && engine_move.to == 0)
@@ -737,7 +746,7 @@ void DisplayResult()
 			flag=1;
 			break;
 		}
-	if (pawn_mat[0] == 0 && pawn_mat[1] == 0 && piece_mat[0] <= BVAL && piece_mat[1] <= BVAL)
+	if (pawn_mat[0] == 0 && pawn_mat[1] == 0 && piece_mat[0] <= B_VALUE && piece_mat[1] <= B_VALUE)
 	{
 		cout << "1/2-1/2 {Stalemate}" << endl;
 
@@ -830,11 +839,11 @@ void xboard()
 			move_list[0].start = hash_start;
 			move_list[0].dest = hash_dest;
 			printf("move %s\n", MoveString(hash_start, hash_dest, 0));
-
+			, max_depth
 			MakeMove(hash_start, hash_dest);
 
 			*/
-			engine_move = Think(fixed_time);
+			engine_move = Think(fixed_time, max_depth);
 			SetMaterial();
 
 			//GenCheck();
@@ -856,7 +865,7 @@ void xboard()
 			return;
 		if (line[0] == '\n')
 			continue;
-		sscanf(line, "%s", command);
+		sscanf_s(line, "%s", command);
 		if (!strcmp(command, "xboard"))
 			continue;
 		if (!strcmp(command, "new"))
@@ -890,7 +899,7 @@ void xboard()
 		}
 		if (!strcmp(command, "st"))
 		{
-			sscanf_s(line, "st %d", &max_time);
+			sscanf_s(line, "st %lld", &max_time);
 			max_time *= 1000;
 			max_depth = MAX_PLY;
 			fixed_time = 1;
@@ -904,7 +913,7 @@ void xboard()
 		}
 		if (!strcmp(command, "time"))
 		{
-			sscanf_s(line, "time %d", &max_time);
+			sscanf_s(line, "time %lld", &max_time);
 			if (max_time < 200)
 				max_depth = 1;
 			else
@@ -1395,7 +1404,8 @@ void SetMaterial()
 U64 GetTime()
 {
 	using namespace std::chrono;
-	return duration_cast<milliseconds>(
+	return duration_cast<milliseconds>
+		(
 		steady_clock::now().time_since_epoch()
 		).count();
 }
@@ -1443,24 +1453,5 @@ void GenCheck()
 		BuildAttackMap();
 		GenQuietMoves(side, xside, 0, pin_mask, bit_check_squares);
 	}
-	/*/
-	BITBOARD bit_check_squares[6];
-	memset(bit_check_squares, 0, sizeof(bit_check_squares));
-
-	int check = Check(xside, kingloc[side]);
-	first_move[ply + 1] = first_move[ply];
-	if (check > -1)
-	{
-		EvadeCapture(check, 0);
-		EvadeQuiet(check, 0);
-	}
-	else
-	{
-		GenCaptures(side, xside, 0);
-		GenChecks(side, xside, 0);
-		BuildAttackMap();
-		GenQuietMoves(side, xside, 0, 0, bit_check_squares);
-	}
-	*/
 }
 
