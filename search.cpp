@@ -1,10 +1,19 @@
-﻿#include <stdlib.h>
+#include <stdlib.h>
 #include <iostream>
 #include <setjmp.h>
+#include <chrono>
 
 #include "globals.h"
 
 using namespace std;
+
+#define UC1 0
+
+void DisplayPV(int depth, int score_cp, unsigned long long nodes);
+
+U64 max_time;
+U64 start_time;
+U64 stop_time;
 
 //ofstream file("debug.txt");
 
@@ -14,10 +23,10 @@ const int  HIST_SCALE = 1;    // if you still use normal history
 const int  QUIET_BASE = 0;
 
 // Continuation history: prev (piece,to) -> curr (piece,to)
-static int cont_hist[6][64][6][64];
+int cont_hist[6][64][6][64];
 
 // Optional: keep a second table for "prev2" (two plies back) for extra strength
-static int cont2_hist[6][64][6][64];
+int cont2_hist[6][64][6][64];
 
 // what move was made to reach this node (for the side who just moved)
 static unsigned char prev_piece[MAX_PLY];
@@ -25,28 +34,21 @@ static unsigned char prev_to[MAX_PLY];
 static unsigned char prev_valid[MAX_PLY]; // 0/1, in case ply==0 or null-move etc.
 
 void UpdateSequence(const int ply, const int depth, const move_data& m);
-static inline int ContinuationScore(int ply, int piece, int to);
-static inline void UpdateWithGravity(int& cell, int bonus);
 
 int hits, misses;
 int bestdiff = 0;
 int worstdiff = 1000;
-
 int bestcut = 0;
 
-void ClearContHistory()
-{
-	memset(cont_hist, 0, sizeof(cont_hist));
-	memset(cont2_hist, 0, sizeof(cont2_hist));
-}
+static inline bool ShouldStop();
 
-int GetNextAttackerPins2(const int s, const int xs, const int sq, const BITBOARD bit_occ, const BITBOARD pin_mask);
+int GetNextAttackerSquarePins(const int s, const int xs, const int sq, const BITBOARD bit_occ, const BITBOARD pin_between);
 
 bool ContactMate(const int s, const int xs, const int attack_sq);
 
 void RemoveDiscoChecks(const int startmoves);
 bool LightSEE(const int s, const int xs, const int att1, const int sq);
-//int GetNextAttackerPins(const int s, const int xs, const int sq, const BITBOARD bit_occ, const BITBOARD pin_mask);
+//int GetNextAttackerSquarePins(const int s, const int xs, const int sq, const BITBOARD bit_occ, const BITBOARD pin_mask);
 
 void UnMakeNull();
 
@@ -57,7 +59,7 @@ void SortPromotion(const int startmoves, const int endmoves);
 void SortEndgame(const int startmoves, const int endmoves);
 void SortQuiet(const int startmoves, const int endmoves, move_data ttmove, move_data countermove, move_data killer, move_data killer2);
 
-void SortChecks(const int from, const int last);
+void SelectCheck(const int from, const int last);
 
 void BuildAttackMap();
 int GetLineTarget();
@@ -70,6 +72,8 @@ int Search(int alpha, int beta, int depth, int pvflag, int nullflag);
 bool PawnCounterAttack(const int from, const int to, const BITBOARD bit_threshold);
 bool CounterAttack(const int from, const int to, const int, const BITBOARD bit_threshold);
 BITBOARD GetThreshold(const int s, const int attacked);
+int GetThreat(const int target);
+BITBOARD PinnersPossible(const int s, const int xs);
 
 void UpdateCheckHistory(const int from, const int to, const int x, const int depth);
 
@@ -81,40 +85,35 @@ BITBOARD GetRookAttacks(const int s);
 BITBOARD GetQueenAttacks(const int s);
 BITBOARD GetKingAttacks(const int s);
 
+void UpdateSequence(const int ply, const int depth, const move_data& m);
+int ContinuationScore(int ply, int piece, int to);
+inline void UpdateWithGravity(int& cell, int bonus);
+
 extern BITBOARD bit_adjacent_king[MAX_PLY][2];
 extern int king_attackers[MAX_PLY][2];
 
 extern int test_mode;
 
-BITBOARD qnodes;
-BITBOARD all_nodes;
+U64 qnodes;
+U64 all_nodes;
 
-int GetThreat(const int target);
-BITBOARD PinnersPossible(const int s, const int xs);
+constexpr int  NO_PV = 0;
+constexpr int  PV = 1;
+constexpr int  CUT = 2;
+constexpr int  ALL = 3;
+constexpr int  NO_NULL = 0;
+constexpr int  DO_NULL = 1;
 
-bool IsCheck(const int p, const int sq, const int king);
+constexpr int  RANK_7 = 6;
 
-constexpr int  NO_PV =0;
-constexpr int  PV =1;
-constexpr int  CUT =2;
-constexpr int  ALL =3;
-constexpr int  NO_NULL =0;
-constexpr int  DO_NULL =1;
+constexpr int  UNDEFENDED = 1;
+constexpr int  WEAKER_ATTACK = 2;
+constexpr int  SEE_ATTACK = 3;
 
-constexpr int  RANK_7 =6;
-constexpr int  WON_ENDGAME =9900;
-constexpr int  LOST_ENDGAME = - 9900;
-
-constexpr int  UNDEFENDED =1;
-constexpr int  WEAKER_ATTACK =2;
-constexpr int  SEE_ATTACK =3;
-
-constexpr int  INF =10000;
+constexpr int  INF = 10000;
 
 constexpr int INVALID = 11111;
 constexpr int START_SCORE = -20000;
-
-int startmat[2];
 
 const int MAX1 = MAX_PLY - 1;
 const int MAX2 = MAX_PLY - 2;
@@ -123,27 +122,25 @@ const int LOW = -10000;
 const int HIGH = 10000;
 const int HI = 10000;//
 
+int startmat[2];
 int currentdepth;
 int currentmax;
 
 int frontier[8] = { 0,0,8,20,10,20,0 };//k as 30 june 17
-int value[] = { 100, 300, 300, 500, 900, 0 };
+int piece_value[6] = { 100, 300, 300, 500, 900, 0 };
 
 int stats_depth[20];
 int stats_count[100];
 int stats_killers[2];
 int total_depth[20];
-
-move_data counter[64][64];
-
 int total_killers[2];
 
+move_data counter[64][64];
 move_data killer[MAX_PLY];
 move_data killer2[MAX_PLY];
-
 move_data mate_move[MAX_PLY];
-
 move_data root_list[100];
+move_data root_move;
 
 int deep;
 
@@ -159,16 +156,15 @@ bool stop_search;
 int root_score;
 int real_side;
 
-move_data root_move;
-
 move_data pv[MAX_PLY][MAX_PLY];
-int pv_len[MAX_PLY];
 move_data old_pv[MAX_PLY][MAX_PLY];
 int old_pv_len[MAX_PLY];
+int pv_len[MAX_PLY];
 
 void UpdatePV(move_data m);
 
 bool IsLegal(const int, const int);
+bool IsCheck(const int p, const int sq, const int king);
 
 void LoadBook();
 int Book();
@@ -190,8 +186,6 @@ int RootSearch(int depth, int alpha, int beta, const int);
 void ShowMoves(int);
 
 int Reduce(const int i);
-
-void DisplayPV();
 
 void UpdateKillers(const int i, const int from, const int to, const int x, const int depth);
 
@@ -224,6 +218,12 @@ unsigned long total_not_percent;
 unsigned long total_not_moves;
 unsigned long total_percent;
 unsigned long total_moves;
+
+void ClearContHistory()
+{
+	memset(cont_hist, 0, sizeof(cont_hist));
+	memset(cont2_hist, 0, sizeof(cont2_hist));
+}
 
 void ReduceHistory()
 {
@@ -275,75 +275,54 @@ void ClearHistory()
 
 void SetTime(int fixed_time)
 {
-	if (fixed_depth == 1)
-	{
-		//??		return;
-	}
-	if (fixed_time == 0 && hply > 1)
-	{
-		if (game_list[hply - 1].capture == QVAL &&
-			b[game_list[hply - 1].to] == Q)
-		{
-			max_time = max_time / 2;
-		}
-		else if (game_list[hply - 1].capture == RVAL &&
-			b[game_list[hply - 1].to] == R &&
-			Attack(side, game_list[hply - 1].to) &&
-			Attack(xside, game_list[hply - 1].to) == 0)
-		{
-			max_time = max_time / 2;
-		}
-		else if (piece_value[game_list[hply - 1].capture] == BVAL &&
-			piece_value[b[game_list[hply - 1].to]] == BVAL &&
-			Attack(side, game_list[hply - 1].to) &&
-			Attack(xside, game_list[hply - 1].to) == 0)
-		{
-			max_time = max_time / 2;
-		}
-		else if (Attack(xside, kingloc[side]))
-		{
-			max_time = max_time / 2;
-		}
-	}
-
 	start_time = GetTime();
-	stop_time = start_time + max_time;
+
+	if (fixed_time <= 0)
+	{
+		// "no limit": set stop_time far away
+		stop_time = start_time + 24 * 60 * 60 * 1000; // 24 hours
+	}
+	else
+	{
+		if (fixed_time > 0)
+		{
+			if (game_list[hply - 1].capture == Q_VALUE &&
+				b[game_list[hply - 1].to] == Q)
+			{
+				max_time = max_time / 2;
+			}
+			else if (game_list[hply - 1].capture == R_VALUE &&
+				b[game_list[hply - 1].to] == R &&
+				Attack(side, game_list[hply - 1].to) &&
+				Attack(xside, game_list[hply - 1].to) == 0)
+			{
+				max_time = max_time / 2;
+			}
+			else if (piece_value[game_list[hply - 1].capture] == B_VALUE &&
+				piece_value[b[game_list[hply - 1].to]] == B_VALUE &&
+				Attack(side, game_list[hply - 1].to) &&
+				Attack(xside, game_list[hply - 1].to) == 0)
+			{
+				max_time = max_time / 2;
+			}
+			else if (Attack(xside, kingloc[side]))
+			{
+				max_time = max_time / 2;
+			}
+		}
+		// subtract a little reserve
+		int reserve = 20;
+		if (fixed_time > reserve)
+			fixed_time -= reserve;
+		stop_time = start_time + fixed_time/2;
+	}
 }
 
-move_data Think(int fixed_time)
+move_data Think(int fixed_time, int max_depth)
 {
 	hits = 0;
 	misses = 0;
-	//
 	stop_search = false;
-
-	if (setjmp(env) != 0)      // came from longjmp
-	{
-		stop_search = true;
-
-		//z();
-
-		while (ply)
-		{
-			UnMakeMove();      // must be rock-solid
-			//z();
-		}
-		/*
-		while (ply)
-		{
-		if(game_list[hply].from !=0 || game_list[hply].to !=0)
-		{
-		UnMakeMove();
-		}
-		else
-		{
-			UnMakeNull();
-			//z();
-			}
-		}
-		*/
-		return root_move;
-	}
 
 	int bookflag = 0;
 	//*
@@ -442,9 +421,7 @@ move_data Think(int fixed_time)
 			}
 			if (test_mode != 1)
 			{
-				//std::cerr << depth << "/" << deep << " " << score << " " << (GetTime() - start_time) / 10 << " " << nodes << " ";
-				//printf(" %d %d %d %d ", depth, deep, score,(GetTime() - start_time) / 10, nodes);
-				//DisplayPV();
+				DisplayPV(depth, score, nodes);
 			}
 
 			if (score > 9000 || score < -9000)
@@ -489,7 +466,7 @@ void GenRoot(const int s, const int xs)
 	}
 	else
 	{
-		GenCaptures(s, xs, pin_mask);//
+		GenCaptures(s, xs, pin_mask);
 		bit_disco_pieces = GenChecks(s, xs, pin_mask);
 		BuildAttackMap();
 		GenQuietMoves(s, xs, 0, pin_mask, bit_check_squares);
@@ -513,8 +490,8 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 	int start = first_move[0];
 	int end = first_move[1];
 	int top = HASH_SCORE;
+	int count = 0;
 
-	bool firstMove = true;
 	bool hasPVHint = (old_pv_len[0] > 0);
 	move_data pvmove;
 	if (hasPVHint)
@@ -522,9 +499,12 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 
 	ply = 0;
 	pv_len[0] = 0;
+	int d = depth - 1;
 
 	for (int i = start; i < end; ++i)
 	{
+		if (ShouldStop())// 
+			break;
 		top = Sort(i, top, end);
 		int from = move_list[i].from;
 		int to = move_list[i].to;
@@ -535,30 +515,26 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 
 		int score;
 
-		bool matchesPV =
-			hasPVHint &&
-			move_list[i].from == pvmove.from &&
-			move_list[i].to == pvmove.to &&
-			move_list[i].flags == pvmove.flags;
-
-		if (firstMove)
+		if (count == 0)
 		{
-			score = -Search(-beta, -alpha, depth - 1, PV, DO_NULL);
-			firstMove = false;
+			score = -Search(-beta, -alpha, d, PV, DO_NULL);
 		}
 		else
 		{
-			score = -Search(-alpha - 1, -alpha, depth - 1, NO_PV, DO_NULL);
+			score = -Search(-alpha - 1, -alpha, d, NO_PV, DO_NULL);
 			if (score > alpha)
 			{
-				score = -Search(-beta, -alpha, depth - 1, PV, DO_NULL);
+				score = -Search(-beta, -alpha, d, PV, DO_NULL);
 			}
 		}
 
 		UnMakeMove();
 
-		if (stop_search) {
-			if (best.from != -1) 
+		count++;
+
+		if (ShouldStop())
+		{
+			if (best.from != -1)
 				root_move = best;
 			return bestScore;
 		}
@@ -568,6 +544,7 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 
 		if (score > bestScore)
 		{
+
 			bestScore = score;
 			best = move_list[i];
 
@@ -575,8 +552,7 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 			{
 				if (root_move.from != best.from || root_move.to != best.to)
 				{
-					std::cerr << depth << "/" << deep << " " << score << " " << (GetTime() - start_time) / 10 << " " << nodes << " ";
-					DisplayPV();
+					DisplayPV(depth, score, nodes);
 				}
 			}
 			root_move = best;
@@ -593,19 +569,26 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 	}
 	if (!stop_search && best.from != -1)
 		root_move = best;
+
 	return bestScore;
+}
+
+static inline bool ShouldStop()
+{
+	if (stop_search) return true;
+	if ((nodes & 2047) == 0) {                 
+		if (GetTime() >= stop_time) 
+			stop_search = true;
+	}
+	return stop_search;
 }
 
 int Search(int alpha, int beta, int depth, int pvs, int null)
 {
+	if (ShouldStop())
+		return alpha;
 	pv_len[ply] = 0;
 	nodes++;
-	if ((nodes & 4095) == 0)// && null == 1)
-	{
-		CheckUp();
-	}
-	if (stop_search)
-		return alpha;
 
 	mate_move[ply].from = -1;//
 	mate_move[ply].to = -1;//
@@ -633,7 +616,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	if (depth < 1)
 	{
-		return QuietSearch(side, xside, alpha, beta);
+		return QuietSearch(alpha, beta);
 	}
 	int pvflag = 0;
 
@@ -674,9 +657,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 		}
 	}
 
-	if (ply > MAX2)
-		return Eval(alpha, beta);
-
 	if (lookup > -1)
 	{
 		hits++;
@@ -692,11 +672,11 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	if (depth > 2
 		&& null
 		&& !pvs
-		&& piece_mat[side] > QVAL
+		&& piece_mat[side] > Q_VALUE
 		&& check == -1
 		)
 	{
-		ev1 = Eval(alpha, beta);
+		ev1 = Eval(side, xside, alpha, beta);
 		if (ev1 >= beta - 50)
 		{
 			//if (!(IsThreat(xside, side, ev1 - beta)) && !(IsThreat(side, xside, 0)))
@@ -844,23 +824,8 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	int k = kingloc[side];
 	BITBOARD b1 = pins[side];
-	BITBOARD pin_mask = 0;
-	/*
-	while (b1)
-	{
-		int sq = NextBit(b1);
-		BITBOARD b2 = bit_between[sq][k] & bit_units[side];
-		if (IsOneBit(b2) != 1 || (bit_between[sq][k] & bit_units[xside]))
-		{
-			pins[side] &= not_mask[sq];
-		}
-		else
-			pin_mask |= mask[NextBit(b2)];
-		b1 &= b1 - 1;
-	}
-*/
 
-	pin_mask = GetPinMask(side, xside);//
+	BITBOARD pin_mask = GetPinMask(side, xside);//
 
 	if (check > -1)
 	{
@@ -967,7 +932,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 				if (depth <= 2)
 				{
 					if (ev1 == INVALID)
-						ev1 = Eval(alpha, beta);
+						ev1 = Eval(s, xs, alpha, beta);
 				}
 				if (depth <= 1)
 				{
@@ -993,7 +958,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 				}
 			}
 
-			if (b[to] == K && piece_mat[s] > 12)
+			if (b[to] == K && piece_mat[s] > 1200)
 				d = depth;
 			else
 				d = depth - 1;
@@ -1108,17 +1073,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	}
 	//end 	
 
-	if (b[C7]==0 && b[D6]==0 && bit_pieces[1][N]==0 && b[C4]==R)
-	{
-		//printf(" rxb7 ");
-		//z();
-	}
-	pin_mask = GetPinMask(side, xside);//
-	if (pin_mask)
-	{
-		//PrintBitBoard(pin_mask);
-		//z();
-	}
+	pin_mask = GetPinMask(side, xside);
 
 	GenCaptures(side, xside, pin_mask);
 
@@ -1147,21 +1102,21 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			}
 			else
 			{
-				lowest = GetNextAttackerPins2(xside, side, to, bit_all & not_mask[from], pin_mask);
+				lowest = GetNextAttackerSquarePins(xside, side, to, bit_all & not_mask[from], pin_mask);
 			}
 
-			val_to = value[b[to]];
+			val_to = piece_value[b[to]];
 			//capture_score = val_to;//
 			if (lowest > -1)
 			{
-				val_from = value[piece];
+				val_from = piece_value[piece];
 				if (val_from < val_to)
 				{
 					capture_score = val_to - val_from;
 				}
 				else if (lowest == K)
 				{
-					if (GetNextAttacker(side, xside, to, bit_all & not_mask[from]) == -1)
+					if (GetNextAttackerSquare(side, xside, to, bit_all & not_mask[from]) == -1)
 					{
 						//printf(" king defends ");
 						//Alg(from, to);
@@ -1180,9 +1135,9 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 						}
 					}
 				}
-				else if (val_from > val_to + value[lowest])
+				else if (val_from > val_to + piece_value[lowest])
 				{
-					capture_score = (val_to + value[lowest]) - val_from;
+					capture_score = (val_to + piece_value[lowest]) - val_from;
 				}
 				else if (piece == P && b[to] == P)
 				{
@@ -1190,7 +1145,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 				}
 				else
 				{
-					capture_score = centi_pieces[SEE(side, from, to, pins[0], pins[1])];
+					capture_score = SEE(side, from, to, pins[0], pins[1]);
 					if (capture_score == 0)
 						capture_score = val_to - val_from;//11/25
 				}
@@ -1259,6 +1214,10 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	int captured;
 
+	//ShowAll(ply);
+
+
+
 	for (int i = startcaptures; i < endcaptures; i++)
 	{
 		//SelectCapture(i, endcaptures);
@@ -1279,18 +1238,19 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			if (depth <= 2)
 			{
 				if (ev1 == INVALID)
-					ev1 = Eval(alpha, beta);
+					ev1 = Eval(side, xside, alpha, beta);
 			}
 			if (depth <= 1 && !(flags & CHECK))
 			{
 				ev = ev1 + PieceScore[side][piece][to] - PieceScore[side][piece][from];
-				ev += value[captured] + PieceScore[xside][captured][to] + frontier[captured];
+				ev += piece_value[captured] + PieceScore[xside][captured][to] + frontier[captured];
 				if (ev + frontier[piece] <= alpha)
 				{
 					continue;
 				}
 			}
 		}
+
 		if (!MakeCapture(from, to, flags))
 		{
 			continue;
@@ -1299,7 +1259,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 		if (count > 0 && depth == 2 && ply > 1 && !(flags & CHECK))
 		{
 			ev = ev1 + PieceScore[xside][piece][to] - PieceScore[xside][piece][from];
-			ev += value[game_list[hply - 1].capture] + PieceScore[side][game_list[hply - 1].capture][to] + frontier[piece];
+			ev += piece_value[game_list[hply - 1].capture] + PieceScore[side][game_list[hply - 1].capture][to] + frontier[piece];
 			if (ev <= alpha && BestThreat(xside, side, alpha - ev) == 0)
 			{
 				UnMakeCapture();
@@ -1364,7 +1324,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 					if (i > n)
 					{
 						Alg(from, to);
-						ShowAll(ply);
+						//ShowAll(ply);
 					}
 				}
 				*/
@@ -1385,7 +1345,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	const int endchecks = first_move[ply + 1];
 
-	d = depth - 1;
 	/*
 		int mfrom = mate_move[ply + 1].from;
 		int mto = mate_move[ply + 1].to;
@@ -1410,6 +1369,11 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	memset(bit_check_squares, 0, sizeof(bit_check_squares));
 	int k1 = kingloc[xside];
 
+	if (depth == 1)
+		d = depth - 1;//
+	else
+		d = depth - 1;
+
 	for (int i = startchecks; i < endchecks; i++)
 	{
 		from = move_list[i].from;
@@ -1431,10 +1395,10 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			int low = GetLowestAttacker(xside, to);
 			if (low > -1)
 			{
-				int val = p_value[piece];
-				if (p_value[low] < val)
+				int val = piece_value[piece];
+				if (piece_value[low] < val)
 					move_list[i].score = -val;
-				else if (p_value[low] == val)
+				else if (piece_value[low] == val)
 					move_list[i].score = -val + 1;
 				else
 				{
@@ -1446,14 +1410,13 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			}
 		}
 	}
-	//ShowAll(ply);
 
 	top = HASH_SCORE;
 
 	for (int i = startchecks; i < endchecks; i++)
 	{
 		//top = Sort(i, top, endchecks);
-		SortChecks(startchecks, endchecks);
+		SelectCheck(startchecks, endchecks);
 
 		from = move_list[i].from;
 		to = move_list[i].to;
@@ -1526,7 +1489,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	}
 	//end checks
 
-	ev1 = Eval(alpha, beta);
+	ev1 = Eval(side, xside, alpha, beta);
 	int diff = alpha - ev1;
 	int old_alpha = alpha;
 
@@ -1535,10 +1498,10 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	if (bit_pieces[side][N] & mask_corner)
 	{
 		margin = 180;
-	} 
+	}
 
 	int flag = 0;
-	if (depth == 1 && diff > margin && count > 0 && (piece_mat[side]> BBVAL && piece_mat[xside] > BBVAL))
+	if (depth == 1 && diff > margin && count > 0 && (piece_mat[side] > BB_VALUE && piece_mat[xside] > BB_VALUE))
 	{
 		//printf("+");
 		//flag = 1;
@@ -1677,7 +1640,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	if (bit_targets)
 	{
-		target_score = value[b[NextBit(bit_targets)]];
+		target_score = piece_value[b[NextBit(bit_targets)]];
 		for (int i = startmoves; i < endmoves; i++)
 		{
 			from = move_list[i].from;
@@ -1703,14 +1666,14 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 						{
 							b1 &= b1 - 1;
 							int square = NextBit(bit_targets);
-							if (p_value[piece] >= p_value[square])
+							if (piece_value[piece] >= piece_value[square])
 							{
 								if (bit_moves[piece][to] & mask[square] &&
 									!(bit_between[to][square] & bit_all) &&
 									!(bit_moves[piece][from] & mask[square] &&
 										!(bit_between[from][square] & bit_all)))
 								{
-									move_list[i].score += 50000 + value[piece];
+									move_list[i].score += 50000 + piece_value[piece];
 								}
 							}
 						}
@@ -1761,7 +1724,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	}
 	*/
 
-	if (piece_mat[s] < 9)//endgames
+	if (piece_mat[s] < Q_VALUE)//endgames
 	{
 		SortEndgame(startmoves, endmoves);
 	}
@@ -1816,169 +1779,115 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	}
 
 
-int quiet_alpha = alpha - ev1;
+	int quiet_alpha = alpha - ev1;
 
-if (ev1 == INVALID && depth <= 2)
-{
-	ev1 = Eval(alpha, beta);
-}
+	bool counter_flag = false;
 
-bool counter_flag = false;
+	top = HASH_SCORE;
 
-top = HASH_SCORE;
-
-for (int i = startmoves; i < endmoves; i++)
-{
-	top = Sort(i, top, endmoves);
-
-	from = move_list[i].from;
-	to = move_list[i].to;
-
-	if (from == ttmove.from && to == ttmove.to)
-		continue;
-
-	flags = move_list[i].flags;
-	move_score = move_list[i].score;
-	piece = b[from];
-
-	s = side;
-	xs = xside;
-	if (move_score > -1)
+	for (int i = startmoves; i < endmoves; i++)
 	{
-		if (depth == 1 && count > 0 && !pvs)
+		top = Sort(i, top, endmoves);
+
+		from = move_list[i].from;
+		to = move_list[i].to;
+
+		if (from == ttmove.from && to == ttmove.to)
+			continue;
+
+		flags = move_list[i].flags;
+		move_score = move_list[i].score;
+		piece = b[from];
+
+		s = side;
+		xs = xside;
+		if (move_score > -1)
 		{
-			ev = ev1 + PieceScore[s][piece][to] - PieceScore[s][piece][from] + frontier[piece];
-
-			if (ev <= alpha)
+			if (depth == 1 && count > 0 && !pvs)
 			{
-				if (alpha - ev > 100)
+				ev = ev1 + PieceScore[s][piece][to] - PieceScore[s][piece][from] + frontier[piece];
+
+				if (ev <= alpha)
 				{
-					break;
-				}
-				continue;
-			}
-		}
-	}
-
-	if (!MakeQuietMove(from, to, flags))
-	{
-		continue;
-	}
-
-	s = side;
-	xs = xside;
-
-	counter_flag = false;
-
-	if (move_score >= 0)// !pvs && depth >= 4
-	{
-		if (bit_targets == 0 && bit_line_attackers[ply - 1] & mask[from])
-		{
-			BITBOARD b1 = (bit_pieces[s][R] | bit_pieces[s][Q]) & bit_rookmoves[from];
-			b1 |= (bit_pieces[s][B] | bit_pieces[s][Q]) & bit_bishopmoves[from];
-			while (b1)
-			{
-				int sq = NextBit(b1);
-				b1 &= b1 - 1;
-				BITBOARD screened = bit_after[sq][from] & bit_units[xs];
-				if (screened)
-				{
-					int flag = 0;
-					int capture_sq = NextBit(screened);
-					if (!(bit_between[sq][capture_sq] & (bit_all | mask[to])))
+					if (alpha - ev > 100)
 					{
-						if (p_value[b[sq]] < p_value[b[capture_sq]] ||
-							!Attack(xs, capture_sq))
-						{
-							flag = 1;
-						}
-						else
-						{
-							int att_sq = GetAttackingSquare(s, capture_sq);
-							if (att_sq > -1)
-							{
-								int see = SEE(s, att_sq, capture_sq, 0, 0);
-								if (see > 0)
-								{
-									flag = 1;
-								}
-							}
-						}
-						if (flag == 1)
-						{
-							int att_sq = GetAttackingSquare(s, capture_sq);
-							if (att_sq > -1)
-							{
-								capture_check = IsCheck(att_sq, capture_sq, kingloc[xs]);
-								if (!capture_check)
-								{
-									bit_threshold = GetThreshold(s, b[capture_sq]);
-									counter_flag = false;
-									if (piece > 0)
-									{
-										counter_flag = CounterAttack(from, to, piece, bit_threshold & not_mask[sq]);
-									}
-									else
-									{
-										counter_flag = PawnCounterAttack(from, to, bit_threshold & not_mask[sq]);
-									}
-								}
-								if (counter_flag == false)
-								{
-									move_list[i].score -= p_value[b[capture_sq]] * BLUNDER_SCORE;
-								}
-							}
-						}
+						break;
 					}
+					continue;
 				}
-			}
-			if (move_list[i].score < 0)
-			{
-				i--;
-				UnMakeQuietMove();
-				continue;
 			}
 		}
 
-		if (move_list[i].score >= 0 && bit_targets == 0)//moving defensive piece
+		if (!MakeQuietMove(from, to, flags))
 		{
-			counter_flag = false;
-			if (piece == 0)
+			continue;
+		}
+
+		s = side;
+		xs = xside;
+
+		counter_flag = false;
+
+		if (move_score >= 0)// !pvs && depth >= 4
+		{
+			if (bit_targets == 0 && bit_line_attackers[ply - 1] & mask[from])
 			{
-				if (row2[xs][to] < 6)
+				BITBOARD b1 = (bit_pieces[s][R] | bit_pieces[s][Q]) & bit_rookmoves[from];
+				b1 |= (bit_pieces[s][B] | bit_pieces[s][Q]) & bit_bishopmoves[from];
+				while (b1)
 				{
-					BITBOARD b1 = bit_pawncaptures[xs][from] & bit_defended[xs][ply - 1];
-					while (b1)
+					int sq = NextBit(b1);
+					b1 &= b1 - 1;
+					BITBOARD screened = bit_after[sq][from] & bit_units[xs];
+					if (screened)
 					{
-						int sq = NextBit(b1);
-						int att_sq = GetAttackingSquare(s, sq);
-						if (att_sq > -1)
+						int flag = 0;
+						int capture_sq = NextBit(screened);
+						if (!(bit_between[sq][capture_sq] & (bit_all | mask[to])))
 						{
-							if (!Attack(xs, sq))
+							if (piece_value[b[sq]] < piece_value[b[capture_sq]] ||
+								!Attack(xs, capture_sq))
 							{
-								capture_check = IsCheck(att_sq, sq, kingloc[xs]);
-								if (!capture_check)
-								{
-									bit_threshold = GetThreshold(s, b[sq]) & not_mask[att_sq];
-									counter_flag = PawnCounterAttack(from, to, bit_threshold);
-								}
-								if (counter_flag == false)
-								{
-									move_list[i].score -= p_value[b[sq]] * BLUNDER_SCORE;
-									break;
-								}
+								flag = 1;
 							}
 							else
 							{
-								int see = SEE(s, att_sq, sq, 0, 0);
-								if (see > 0)
+								int att_sq = GetAttackingSquare(s, capture_sq);
+								if (att_sq > -1)
 								{
-									move_list[i].score -= p_value[b[sq]] * BLUNDER_SCORE;
-									break;
+									int see = SEE(s, att_sq, capture_sq, 0, 0);
+									if (see > 0)
+									{
+										flag = 1;
+									}
+								}
+							}
+							if (flag == 1)
+							{
+								int att_sq = GetAttackingSquare(s, capture_sq);
+								if (att_sq > -1)
+								{
+									capture_check = IsCheck(att_sq, capture_sq, kingloc[xs]);
+									if (!capture_check)
+									{
+										bit_threshold = GetThreshold(s, b[capture_sq]);
+										counter_flag = false;
+										if (piece > 0)
+										{
+											counter_flag = CounterAttack(from, to, piece, bit_threshold & not_mask[sq]);
+										}
+										else
+										{
+											counter_flag = PawnCounterAttack(from, to, bit_threshold & not_mask[sq]);
+										}
+									}
+									if (counter_flag == false)
+									{
+										move_list[i].score -= piece_value[b[capture_sq]] * BLUNDER_SCORE;
+									}
 								}
 							}
 						}
-						b1 &= b1 - 1;
 					}
 				}
 				if (move_list[i].score < 0)
@@ -1988,41 +1897,46 @@ for (int i = startmoves; i < endmoves; i++)
 					continue;
 				}
 			}
-			else
+
+			if (move_list[i].score >= 0 && bit_targets == 0)//moving defensive piece
 			{
 				counter_flag = false;
-				BITBOARD b1 = bit_moves[piece][from] & bit_defended[xs][ply - 1];
-				while (b1)
+				if (piece == 0)
 				{
-					int sq = NextBit(b1);
-					b1 &= b1 - 1;
-					if (!(bit_between[from][sq] & bit_all))
+					if (row2[xs][to] < 6)
 					{
-						int att = GetAttackingSquare(s, sq);
-						if (att > -1)
+						BITBOARD b1 = bit_pawncaptures[xs][from] & bit_defended[xs][ply - 1];
+						while (b1)
 						{
-							if (!Attack(xs, sq))
+							int sq = NextBit(b1);
+							int att_sq = GetAttackingSquare(s, sq);
+							if (att_sq > -1)
 							{
-								capture_check = IsCheck(att, sq, kingloc[xs]);
-								if (!capture_check)
+								if (!Attack(xs, sq))
 								{
-									bit_threshold = GetThreshold(s, b[sq]) & not_mask[att];
-									counter_flag = CounterAttack(from, piece, to, bit_threshold);
+									capture_check = IsCheck(att_sq, sq, kingloc[xs]);
+									if (!capture_check)
+									{
+										bit_threshold = GetThreshold(s, b[sq]) & not_mask[att_sq];
+										counter_flag = PawnCounterAttack(from, to, bit_threshold);
+									}
+									if (counter_flag == false)
+									{
+										move_list[i].score -= piece_value[b[sq]] * BLUNDER_SCORE;
+										break;
+									}
 								}
-								if (counter_flag == false)
+								else
 								{
-									move_list[i].score -= p_value[b[sq]] * BLUNDER_SCORE;
-									break;
+									int see = SEE(s, att_sq, sq, 0, 0);
+									if (see > 0)
+									{
+										move_list[i].score -= piece_value[b[sq]] * BLUNDER_SCORE;
+										break;
+									}
 								}
 							}
-							else
-							{
-								int see = SEE(s, att, sq, 0, 0);
-								if (see > 0)
-								{
-									break;
-								}
-							}
+							b1 &= b1 - 1;
 						}
 					}
 					if (move_list[i].score < 0)
@@ -2032,1487 +1946,295 @@ for (int i = startmoves; i < endmoves; i++)
 						continue;
 					}
 				}
-			}
-		}
-	}
-	if (depth == 2 && piece_mat[s] > 3 && count > 0)
-	{
-		if (ev1 == INVALID)
-		{
-			ev1 = -Eval(alpha, beta);
-		}
-		ev = ev1 + PieceScore[xs][piece][to] - PieceScore[xs][piece][from] + frontier[piece] +
-			frontier[game_list[hply - 1].capture];
-		if (ev <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
-		{
-			UnMakeQuietMove();
-			continue;
-		}
-	}
-	if (depth == 3 && piece_mat[s] > 3 && count > 0)
-	{
-		if (ev1 == INVALID)
-		{
-			ev1 = -Eval(alpha, beta);
-		}
-
-		if (ev1 + 400 <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
-		{
-			if (!(bit_pieces[xs][P] & mask_ranks[xs][6]))
-			{
-				UnMakeQuietMove();
-				continue;
-			}
-		}
-	}
-	if (depth == 4 && piece_mat[s] > 3 && count > 0)
-	{
-		if (ev1 == INVALID)
-		{
-			ev1 = -Eval(alpha, beta);
-		}
-
-		if (ev1 + 800 <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
-		{
-			if (!(bit_pieces[xs][P] & mask_ranks[xs][6]))
-			{
-				UnMakeQuietMove();
-				continue;
-			}
-		}
-	}
-	if (quiet_count > 0 && depth > 2)
-	{
-		r = Reduce(i);
-		//if (b[to] == 0 && row2[s][to] == 5)
-		//	r = 0;//
-		if (r == 1)
-		{
-			if (ev1 == INVALID)
-				ev1 = Eval(alpha, beta);
-			//??if (depth > 4 && alpha - ev1 >= 200)
-			//	r = 2;
-			if (alpha - ev1 >= 800)
-				;// printf("+");
-		//	r = 3;
-		}
-		//if (quietIndex < 4) return 0;
-		//if (depth >= 10 && quiet_count >= 12) r = 2;
-		//if (depth >= 12 && quiet_count >= 20) r = 3;
-		//*
-		if (depth >= 10 && !pvs && !(flags & ATTACK) && count >= 12)
-		{
-			if (move_score < KILLER2_SCORE) 
-			{ r = 2; }
-			//if (quiet_count > 16 && move_score < 20000)   r = 3;   // truly awful tail
-			//if (tactical_flag)                         r = 0;   // your threat/en-prise check says volatile
-		}
-		//*/
-		reduce[ply] = r;
-	}
-
-	quiet_count++;
-	extend[ply] = -r;
-	d = depth - 1;
-	int rd = d - r;
-	if (rd < 0)
-		rd = 0;
-
-	if (depth < 3 || r == 0)
-	{
-		if (count == 0)
-		{
-			score = -Search(-beta, -alpha, d, pvs, DO_NULL);
-		}
-		else
-		{
-			score = -Search(-alpha - 1, -alpha, d, NO_PV, DO_NULL); 
-			if (score > alpha && score < beta)
-				score = -Search(-beta, -alpha, d, PV, DO_NULL);
-		}
-	}
-	/*
-	else
-	{
-		score = -Search(-alpha - 1, -alpha, rd, NO_PV, DO_NULL);
-
-		if (score > alpha && score < beta)
-		{
-			extend[ply] = 0;
-			score = -Search(-alpha - 1, -alpha, d, NO_PV, DO_NULL);
-
-			if (score > alpha)
-				score = -Search(-beta, -alpha, d, PV, DO_NULL);
-		}
-	}
-	//*/
-	//*
-	else
-	{
-		// LMR trial
-		score = -Search(-alpha - 1, -alpha, rd, NO_PV, DO_NULL);
-
-		if (score > alpha && score < beta)
-		{
-				extend[ply] = 0;
-				score = -Search(-beta, -alpha, d, PV, DO_NULL);
-		}
-	}
-
-	UnMakeQuietMove();
-
-	if (stop_search)
-		return alpha;
-
-	count++;
-
-	s = side;
-	xs = xside;
-
-	if (score > bestscore)
-	{
-		bestscore = score;
-		bestmove = move_list[i];
-	}
-	if (score > alpha)
-	{
-		if (score >= beta)
-		{
-			UpdateSequence(ply, depth, move_list[i]);
-			UpdateKillers(i, from, to, score, depth);
-			AddHash(s, depth, score, BETA, from, to, flags);
-			PlyMove[ply] = CUT;
-			if (lookup > -1)
-				cut_tt_nodes++;
-			else
-				cut_nodes++;
-			if (count == 1)
-			{
-				if (lookup > -1)
-					first_tt_nodes++;
 				else
-					first_nodes++;
-			}
-			if (flag==1 && depth == 1)
-			{
-				printf(" diff %d ", diff);
-				printf(" ev1 %d ", ev1);
-				printf(" alpha %d ", alpha);
-				printf(" score %d ", score);
-				Alg(from, to);
-				printf(" xxx ");
-				z();
-			}
-			if (diff > bestcut && depth == 1)
-			{
-				bestcut = diff;
-				if (diff > 50)
 				{
-					;
-				}
-			}
-
-			av_nodes += count;
-			//if (game_list[hply - 1].flags & MATETHREAT)
-
-			if (nodes > 1 && quiet_count > 7 && depth > 1)// && move_list[i].score < 0)
-			{
-				//debug++;
-				/*
-				file << " count " << debug << '\n';
-				file << " move " << quiet_count << '\n';
-				file << " startmoves " << startmoves << '\n';
-				file << " endmoves " << endmoves << '\n';
-
-				file << " score " << move_list[i].score << '\n';
-
-				file << " nodes " << nodes << '\n';
-
-				file << " depth " << depth << '\n';
-
-				file << " pvs " << pvs << '\n';
-				file << '\n';
-				*/
-				/*
-				if (nodes > 100000)
-				{
-					cout << " nodes " << nodes << '\n';
-					cout << " depth " << depth << '\n';
-					printf("\n move %d ", quiet_count);
-					Alg(from, to); printf(" score %d \n", move_list[i].score);
-
-					DisplayBoard();
-					cout << " number " << endmoves - startmoves << '\n';
-					for (int j = startmoves; j < endmoves; j++)
+					counter_flag = false;
+					BITBOARD b1 = bit_moves[piece][from] & bit_defended[xs][ply - 1];
+					while (b1)
 					{
-						from = move_list[j].from;
-						to = move_list[j].to;
-						Alg(from, to);
-						printf(" score %d \n", move_list[j].score);
-					}
-					_getch();
-				}
-				//*/
-			}
-			return beta;
-		}
-		UpdatePV(move_list[i]);
-		alpha = score;
-	}
-}
-
-all_nodes++;
-PlyMove[ply] = ALL;
-
-if (!count)
-{
-	return 0;
-}
-
-if (fifty >= 100)
-return 0;
-
-if (depth == 1 && old_alpha < alpha && flag == 1)
-{
-	printf(" diff %d ", diff);
-	printf(" ev1 %d ", ev1);
-	printf(" alpha %d ", alpha);
-	printf(" score %d ", score);
-	Alg(from, to);
-	z();
-}
-
-if (alpha > initial_alpha)
-{
-	AddHash(side, depth, alpha, EXACT, bestmove.from, bestmove.to, bestmove.flags);
-}
-else
-{
-	if (depth > 3)
-		AddHash(side, depth, alpha, ALPHA, bestmove.from, bestmove.to, bestmove.flags);
-}
-return alpha;
-}
-
-void SortLastDepth(const int first, const int last)
-{
-	int from, to;
-	for (int i = first; i < last; i++)
-	{
-		from = move_list[i].from;
-		to = move_list[i].to;
-		move_list[i].score = PieceScore[side][b[from]][to] - PieceScore[side][b[from]][from] + frontier[b[from]];
-	}
-}
-
-int Sort(const int from, const int top, const int last)
-{
-	int bestscore = move_list[from].score;
-	int best_index = from;
-	const int start = from + 1;
-	for (int i = start; i < last; i++)
-		if (move_list[i].score > bestscore)
-		{
-			bestscore = move_list[i].score;
-			best_index = i;
-			if (bestscore >= top)
-			{
-				//Alg(move_list[i].from, move_list[i].to);
-				//ShowAll(ply);
-				break;
-			}				
-		}
-
-	move_data g = move_list[from];
-	move_list[from] = move_list[best_index];
-	move_list[best_index] = g;
-
-	return bestscore;
-}
-
-int SortCaptures(const int from, const int top, const int last)
-{
-	int bestscore = move_list[from].score;
-	int best_index = from;
-	const int start = from + 1;
-	for (int i = start; i < last; i++)
-		if (move_list[i].score > bestscore)
-		{
-			bestscore = move_list[i].score;
-			best_index = i;
-			if (bestscore >= top)
-			{
-				break;
-			}
-		}
-
-	move_data g = move_list[from];
-	move_list[from] = move_list[best_index];
-	move_list[best_index] = g;
-
-	return bestscore;
-}
-
-void SortChecks(const int from, const int last)
-{
-	int best = from;
-	const int first = from + 1;
-
-	for (int i = first; i < last; i++)
-		if (move_list[i].score > move_list[best].score)
-		{
-			best = i;
-		}
-
-	move_data g = move_list[from];
-	move_list[from] = move_list[best];
-	move_list[best] = g;
-}
-
-void CheckUp()
-{
-	U64 tim = GetTime();
-	if (tim >= stop_time)
-	{
-		stop_search = true;
-	}
-}
-
-static void CheckUp2()
-{
-	if (fixed_depth != 0)
-		;// return;
-
-	if (GetTime() >= stop_time)// || (max_time < 50 && ply > 1))
-	{
-		stop_search = true;
-		longjmp(env, 1);              // must be non-zero
-	}
-}
-
-int Reduce(const int i)
-{
-	if (move_list[i].flags & (CAPTURE | CHECK | PROMOTE | PASSED7))
-		return 0;
-	if (piece_mat[xside] == 0)
-		return 0;
-	if (game_list[hply - 1].flags & MATETHREAT)
-	{
-		return 0;
-	}
-	//if (piece_mat[side] <= 3 && fifty > 8)
-		//cout << "+";
-	//	return 2;
-	if (piece_mat[side] <= 3 && b[move_list[i].to] == K)
-	{
-		return 0;
-	}
-	return 1;
-}
-
-void DisplayPV()
-{
-	if (pv_len[0] <= 0)
-		return;
-
-	for (int i = 0; i < pv_len[0]; ++i)
-	{
-		Alg(pv[0][i].from, pv[0][i].to);
-		printf(" ");
-	}
-	printf("\n");
-}
-
-void UpdateCheckHistory(const int from, const int to, const int x, const int depth)
-{
-	if (check_history[b[from]][to] < HISTORY_LIMIT)
-		check_history[b[from]][to] += depth;
-	else
-		check_history[b[from]][to] >>= 1;
-	if (x > WON_ENDGAME && check_history[b[from]][to] < CHECK_SCORE)
-		check_history[b[from]][to] = CHECK_SCORE;
-}
-
-void UpdateKillers(const int i, const int from, const int to, const int x, const int depth)
-{
-	if (hist_from[side][b[from]][from] + depth < HISTORY_LIMIT &&
-		hist_to[side][b[from]][to] + depth < HISTORY_LIMIT)
-	{
-		hist_from[side][b[from]][from] += depth;
-		hist_to[side][b[from]][to] += depth * depth;
-		if (game_list[hply - 1].capture == EMPTY)
-		{
-			/*
-			printf("\n counter ");
-			Alg(game_list[hply - 1].from,game_list[hply - 1].to);
-			printf(" ");
-			Alg(from, to);
-			z();
-			//*/
-			counter[game_list[hply - 1].from][game_list[hply - 1].to].from = from;
-			counter[game_list[hply - 1].from][game_list[hply - 1].to].to = to;
-		}
-	}
-	else
-	{
-		hist_from[side][b[from]][from] >>= 1;
-		hist_to[side][b[from]][to] >>= 1;
-	}
-
-	if (!(killer[ply].from == from && killer[ply].to == to))
-	{
-		killer2[ply] = killer[ply];
-		killer[ply].from = from;
-		killer[ply].to = to;
-		killer[ply].score = b[from];
-	}
-}
-
-void ClearKillers()
-{
-	memset(mate_move, 0, sizeof(mate_move));
-	memset(killer, 0, sizeof(killer));
-	memset(killer2, 0, sizeof(killer2));
-}
-
-int GetCurrentDepth()
-{
-	return currentdepth;
-}
-
-int Reps2()
-{
-	for (int i = hply - 4; i >= hply - fifty; i -= 2)
-	{
-		if (game_list[i].hash == currentkey)
-		{
-			return 1;
-		}
-	}
-	return 0;
-}
-
-bool IsLegal(const int from, const int to)
-{
-	if (b[from] == K)
-	{
-		if (bit_kingmoves[from] & mask[to])
-			return true;
-		if (abs(from - to) == 2)
-		{
-			if (to == G1 && castle & 1)
-				return true;
-			else if (to == C1 && castle & 2)
-				return true;
-			else if (to == G8 && castle & 4)
-				return true;
-			else if (to == C8 && castle & 8)
-				return true;
-		}
-		return false;
-	}
-	if (b[from] == R)
-	{
-		if (bit_rookmoves[from] & mask[to] &&
-			(bit_between[from][to] & bit_all) == 0)
-			return true;
-		else
-		{
-			return false;
-		}
-	}
-	if (b[from] == B)
-	{
-		if (bit_bishopmoves[from] & mask[to] &&
-			(bit_between[from][to] & bit_all) == 0)
-			return true;
-		else
-			return false;
-	}
-	if (b[from] == Q)
-	{
-		if (bit_queenmoves[from] & mask[to] &&
-			(bit_between[from][to] & bit_all) == 0)
-			return true;
-		else
-		{
-			return false;
-		}
-	}
-	if (b[from] == N)
-	{
-		if (bit_knightmoves[from] & mask[to])
-			return true;
-		else
-		{
-			return false;
-		}
-	}
-	if (b[from] == P)
-	{
-		if (pawnplus[side][from] == to)
-		{
-			if (b[to] == EMPTY)
-			{
-				return true;
-			}
-			return false;
-		}
-		if (bit_pawndefends[xside][from] & mask[to] && mask[to] & bit_units[xside])
-		{
-			return true;
-		}
-		if (pawndouble[side][from] == to)
-		{
-			if (b[pawnplus[side][from]] == EMPTY && b[to] == EMPTY)
-			{
-				return true;
-			}
-			return false;
-		}
-		if (b[to] == EMPTY && col[from] != col[to] &&
-			bit_pawndefends[xside][from] & mask[to])
-		{
-			if ((b[game_list[hply - 1].to] == P &&
-				abs(game_list[hply - 1].from - game_list[hply - 1].to) == 16 &&
-				col[game_list[hply - 1].to] == col[to]))
-			{
-				return true;
-			}
-			return false;
-		}
-	}
-	return true;
-}
-
-int GetThreat(const int target)
-{
-	int attacker = GetNextAttacker(side, xside, target, bit_all);
-	if (attacker == -1)
-		return -1;
-
-	int count = 0;
-
-	if (p_value[b[attacker]] < p_value[b[target]] ||
-		Attack(xside, target) == 0// ||
-		//SEE(xside, attacker, target) > 0)//
-		)
-	{
-		//Alg(attacker, target);
-		//	z();
-		//	printf(" targets ");
-		return 1;
-	}
-
-	return -1;
-}
-
-int GetLineTarget()
-{
-	BITBOARD bit_target;
-	int sq = -1;
-	bit_target = (bit_attacked[xside][R] | bit_attacked[xside][B]) & bit_pieces[side][4];
-	if (bit_target)
-	{
-		return NextBit(bit_target);
-	}
-	bit_target = (bit_attacked[xside][Q] | bit_attacked[xside][B]) & bit_pieces[side][3];
-	if (bit_target)
-	{
-		return NextBit(bit_target);
-	}
-	bit_target = (bit_attacked[xside][Q] | bit_attacked[xside][R]) & bit_pieces[side][2];
-	if (bit_target)
-	{
-		return NextBit(bit_target);
-	}
-	bit_target = (bit_attacked[xside][Q] | bit_attacked[xside][R] | bit_attacked[xside][B]) & bit_pieces[side][1];
-	if (bit_target)
-	{
-		return NextBit(bit_target);
-	}
-	return -1;
-}
-
-bool PawnCounterAttack(const int from, const int to, const BITBOARD bit_threshold)
-{
-	if (bit_pawncaptures[xside][to] & bit_threshold)
-	{
-		return true;
-	}
-	return false;
-}//could add knight king attacks
-
-bool CounterAttack(const int from, const int to, const int piece, const BITBOARD bit_threshold)
-{
-	BITBOARD b1 = bit_moves[piece][to] & bit_threshold;
-	if (b1)
-	{
-		int counter_sq = NextBit(b1);
-		if (piece != b[counter_sq] && !(bit_moves[piece][from] & mask[counter_sq]))
-		{
-			if (!(bit_between[to][counter_sq] & bit_all))
-			{
-				if (p_value[piece] < p_value[b[counter_sq]] ||
-					!Attack(xside, counter_sq))
-				{
-					/*
-					PrintBitBoard(bit_threshold);
-					cout << " att ";
-					Algebraic(to);
-					cout << " counter ";
-					Algebraic(counter_sq);
-					cout << " ";
-					Alg(from, to);
-					z();
-					//*/
-					return true;
-				}
-			}
-		}
-	}
-	return false;
-}
-
-BITBOARD GetThreshold(const int s, const int attacked)
-{
-	if (attacked == Q)
-		return 0;
-	if (attacked == R)
-		return bit_pieces[s][Q];
-	if (attacked == B || attacked == N)
-		return bit_pieces[s][Q] | bit_pieces[s][R];
-	if (attacked == P)
-		return bit_pieces[s][Q] | bit_pieces[s][R] | bit_pieces[s][B] | bit_pieces[s][N];
-	return 0;
-}
-
-void UpdatePV(move_data m)
-{
-	pv[ply][0] = m; // move_list[i];              // first move in PV
-	pv_len[ply] = pv_len[ply + 1] + 1;      // length = 1 + child PV
-
-	for (int j = 0; j < pv_len[ply + 1]; ++j)
-		pv[ply][j + 1] = pv[ply + 1][j];    // copy child PV up
-
-}
-
-bool BestThreat(const int s, const int xs, const int diff)
-{
-	if (diff >= QVAL)
-		return false;
-	int from, to, x;
-
-	BITBOARD b1 = bit_pieces[s][P] & mask_ranks[s][6];
-
-	while (b1)
-	{
-		from = NextBit(b1);
-		b1 &= b1 - 1;
-		to = pawnplus[s][from];
-		if (b[to] == EMPTY && !Attack2(xs, to, bit_all & not_mask[from], not_mask[from]))
-		{
-			return true;
-		}
-	}
-
-	BITBOARD bit_targets = bit_pieces[xs][Q];
-
-	if (diff < RVAL)//Rooks are potentially a target.
-	{
-		bit_targets |= bit_pieces[xs][R];
-		if (diff < BVAL)//Minor pieces are potentially a target.
-		{
-			bit_targets |= bit_pieces[xs][N] | bit_pieces[xs][B];
-			if (diff < PVAL)//Pawns are potentially a target.
-				bit_targets |= bit_pieces[xs][P];
-		}
-	}
-	if (bit_targets == 0)
-		return false;
-
-	BITBOARD b2;
-	if (s == 0)//Are there any pawn attacks?
-	{
-		b1 = bit_targets & (((bit_pieces[0][P] & not_h_file) << 9));
-		b2 = bit_targets & (((bit_pieces[0][P] & not_a_file) << 7));
-	}
-	else
-	{
-		b1 = bit_targets & (((bit_pieces[1][P] & not_h_file) >> 7));
-		b2 = bit_targets & (((bit_pieces[1][P] & not_a_file) >> 9));
-	}
-
-	while (b1)
-	{
-		to = NextBit(b1);
-		b1 &= b1 - 1;
-		if (b[to] > P || Attack(xs, to) == 0)
-		{
-			return true;
-		}
-	}
-
-	while (b2)
-	{
-		to = NextBit(b2);
-		b2 &= b2 - 1;
-		if (b[to] > P || Attack(xs, to) == 0)
-		{
-			return true;
-		}
-	}
-
-	for (x = 0; x < total[s][N]; x++)
-	{
-		from = pieces[s][N][x];
-		b1 = bit_knightmoves[from] & bit_targets;
-		while (b1)
-		{
-			to = NextBit(b1);
-			b1 &= b1 - 1;
-			if (b[to] > B || Attack(xs, to) == 0)
-			{
-				return true;
-			}
-			else if (SEE(s, from, to, 0, 0) > 0)
-			{
-				return true;
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][B]; x++)
-	{
-		from = pieces[s][B][x];
-		b1 = bit_bishopmoves[from] & bit_targets;
-		while (b1)//Are there any bishop attacks?
-		{
-			to = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[from][to] & bit_all))
-			{
-				if (b[to] > B || Attack(xs, to) == 0)
-				{
-					return true;
-				}
-				else if (SEE(s, from, to, 0, 0) > 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][R]; x++)
-	{
-		from = pieces[s][R][x];
-		b1 = bit_rookmoves[from] & bit_targets;
-		while (b1)//Are there any rook attacks?
-		{
-			to = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[from][to] & bit_all))
-			{
-				if (b[to] > R || Attack(xs, to) == 0)
-				{
-					return true;
-				}
-				else if (SEE(s, from, to, 0, 0) > 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][Q]; x++)
-	{
-		from = pieces[s][Q][x];
-		b1 = bit_queenmoves[from] & bit_targets;
-		while (b1)//Are there any queen attacks?
-		{
-			to = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[from][to] & bit_all))
-			{
-				if (Attack(xs, to) == 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	from = kingloc[s];
-	b1 = bit_kingmoves[from] & bit_targets;
-	while (b1)
-	{
-		to = NextBit(b1);
-		b1 &= b1 - 1;
-		if (Attack(xs, to) == 0)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool IsThreat(const int s, const int xs, const int diff)
-{
-	int sq, i, x;
-
-	BITBOARD b1, b2;
-
-	b1 = bit_pieces[s][P] & mask_ranks[s][6];
-
-	while (b1)
-	{
-		i = NextBit(b1);
-		b1 &= b1 - 1;
-		sq = pawnplus[s][i];
-		if (b[sq] == EMPTY && Attack(xs, sq) == 0 &&
-			!(mask_cols[i] & mask[pieces[xs][R][0]] &&
-				!(bit_between[i][NextBit(mask[pieces[xs][R][0]])] & bit_all)))
-		{
-			return true;
-		}
-	}
-	/*
-	if(diff>300)
-	{
-	cout << " diff " << diff;
-	cout << " s " << s;
-	z();
-	}
-	*/
-
-	BITBOARD bit_targets = 0;
-
-	if (diff < 800)
-		bit_targets |= bit_pieces[xs][Q];
-
-	if (diff < 500)
-		bit_targets |= bit_pieces[xs][R];
-
-	if (diff < 300)
-		bit_targets |= bit_pieces[xs][N] | bit_pieces[xs][B];
-
-	if (bit_targets == 0)
-		return false;
-
-	if (s == 0)
-	{
-		b1 = bit_targets & (((bit_pieces[0][P] & not_h_file) << 9));
-		b2 = bit_targets & (((bit_pieces[0][P] & not_a_file) << 7));
-	}
-	else
-	{
-		b1 = bit_targets & (((bit_pieces[1][P] & not_h_file) >> 7));
-		b2 = bit_targets & (((bit_pieces[1][P] & not_a_file) >> 9));
-	}
-
-	while (b1)
-	{
-		sq = NextBit(b1);
-		b1 &= b1 - 1;
-		if (b[sq] > P || Attack(xs, sq) == 0)
-		{
-			return true;
-		}
-	}
-
-	while (b2)
-	{
-		sq = NextBit(b2);
-		b2 &= b2 - 1;
-		if (b[sq] > P || Attack(xs, sq) == 0)
-		{
-			return true;
-		}
-	}
-
-	for (x = 0; x < total[s][N]; x++)
-	{
-		i = pieces[s][N][x];
-		b1 = bit_knightmoves[i] & bit_targets;
-		while (b1)
-		{
-			sq = NextBit(b1);
-			b1 &= b1 - 1;
-			if (b[sq] > B || Attack(xs, sq) == 0)
-			{
-				return true;
-			}
-			else if (SEE(s, i, sq, 0, 0) > 0)
-			{
-				return true;
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][B]; x++)
-	{
-		i = pieces[s][B][x];
-		b1 = bit_bishopmoves[i] & bit_targets;
-		while (b1)//Are there any bishop attacks?
-		{
-			sq = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[i][sq] & bit_all))
-			{
-				if (b[sq] > B || Attack(xs, sq) == 0)
-				{
-					return true;
-				}
-				else if (SEE(s, i, sq, 0, 0) > 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][R]; x++)
-	{
-		i = pieces[s][R][x];
-		b1 = bit_rookmoves[i] & bit_targets;
-		while (b1)//Are there any rook attacks?
-		{
-			sq = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[i][sq] & bit_all))
-			{
-				if (b[sq] > R || Attack(xs, sq) == 0)
-				{
-					return true;
-				}
-				else if (SEE(s, i, sq, 0, 0) > 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	for (x = 0; x < total[s][Q]; x++)
-	{
-		i = pieces[s][Q][x];
-		b1 = bit_queenmoves[i] & bit_targets;
-		while (b1)//Are there any queen attacks?
-		{
-			sq = NextBit(b1);
-			b1 &= b1 - 1;
-			if (!(bit_between[i][sq] & bit_all))
-			{
-				if (Attack(xs, sq) == 0)
-				{
-					return true;
-				}
-			}
-		}
-	}
-
-	i = kingloc[s];
-	b1 = bit_kingmoves[i] & bit_targets;
-	while (b1)//Are there any king attacks?
-	{
-		sq = NextBit(b1);
-		b1 &= b1 - 1;
-		if (Attack(xs, sq) == 0)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-void SortPromotion(const int startmoves, const int endmoves)
-{
-	BITBOARD b2 = bit_pieces[xside][P] & mask_ranks[xside][6];
-	int start = -1, dest = -1;
-	int from, to;
-
-	while (b2)
-	{
-		start = NextBit(b2);
-		dest = pawnplus[xside][start];
-		break;
-	}
-	if (dest > -1 && (b[dest] == 6))
-	{
-		if (!Attack(side, dest))
-		{
-			for (int i = startmoves; i < endmoves; i++)
-			{
-				from = move_list[i].from;
-				to = move_list[i].to;
-				if (b[from] > 0)
-				{
-					if (bit_moves[b[from]][to] & mask[dest])
-					{
-						if (!(bit_between[to][dest] & (bit_all & not_mask[start])))
+						int sq = NextBit(b1);
+						b1 &= b1 - 1;
+						if (!(bit_between[from][sq] & bit_all))
 						{
-							move_list[i].score += ESCAPE_SCORE + 8;
+							int att = GetAttackingSquare(s, sq);
+							if (att > -1)
+							{
+								if (!Attack(xs, sq))
+								{
+									capture_check = IsCheck(att, sq, kingloc[xs]);
+									if (!capture_check)
+									{
+										bit_threshold = GetThreshold(s, b[sq]) & not_mask[att];
+										counter_flag = CounterAttack(from, piece, to, bit_threshold);
+									}
+									if (counter_flag == false)
+									{
+										move_list[i].score -= piece_value[b[sq]] * BLUNDER_SCORE;
+										break;
+									}
+								}
+								else
+								{
+									int see = SEE(s, att, sq, 0, 0);
+									if (see > 0)
+									{
+										break;
+									}
+								}
+							}
+						}
+						if (move_list[i].score < 0)
+						{
+							i--;
+							UnMakeQuietMove();
+							continue;
 						}
 					}
 				}
 			}
 		}
-		else
+		if (depth == 2 && piece_mat[s] > N_VALUE && count > 0)
 		{
-			for (int i = startmoves; i < endmoves; i++)
+			ev = ev1 + PieceScore[xs][piece][to] - PieceScore[xs][piece][from] + frontier[piece] +
+				frontier[game_list[hply - 1].capture];
+			if (ev <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
 			{
-				from = move_list[i].from;
-				to = move_list[i].to;
-				if (b[from] > 0 && to != dest && !(move_list[i].flags & CHECK))
-				{
-					if (bit_moves[b[from]][from] & mask[dest])
-					{
-						if (!(bit_moves[b[from]][to] & mask[dest]))
-						{
-							move_list[i].score = -8;
-						}
-					}
-				}
+				UnMakeQuietMove();
+				continue;
 			}
 		}
-	}
-}
-
-void SortEndgame(const int startmoves, const int endmoves)
-{
-	return;//
-	if (piece_mat[side] < 9)//endgames
-	{
-		int bonus, piece;
-		for (int i = startmoves; i < endmoves; i++)
+		if (depth == 3 && piece_mat[s] > N_VALUE && count > 0)
 		{
-			int from = move_list[i].from;
-			int to = move_list[i].to;
-			piece = b[from];
-			bonus = 0;
-			if (piece == K)
+			if (ev1 + 400 <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
 			{
-				bonus = king_endgame_score[to] - king_endgame_score[from];
-				if (bit_kingmoves[to] & bit_units[xside])// & bit_undefended[xside])
+				if (!(bit_pieces[xs][P] & mask_ranks[xs][6]))
 				{
-					bonus += 25;
-				}
-				if (bit_kingmoves[to] & bit_units[side] & bit_undefended[side])
-				{
-					bonus += 25 + ATTACK_SCORE;
-				}
-			}
-			else
-			{
-				if (piece == P)
-				{
-					if (mask[from] & passed_list[side])
-					{
-						move_list[i].score += passed[side][to] + ATTACK_SCORE;
-					}
+					UnMakeQuietMove();
 					continue;
 				}
-				if (bit_moves[piece][to] & bit_pieces[xside][P] & bit_undefended[xside])
+			}
+		}
+		if (depth == 4 && piece_mat[s] > N_VALUE && count > 0)
+		{
+			if (ev1 + 800 <= alpha && BestThreat(xs, s, alpha - ev) == 0)// ( && b[to] != K))
+			{
+				if (!(bit_pieces[xs][P] & mask_ranks[xs][6]))
 				{
-					int sq = NextBit(bit_pieces[xside][P]);
-					if (!(bit_between[to][sq] & bit_all))
-					{
-						bonus += 25 + ATTACK_SCORE;
-					}
+					UnMakeQuietMove();
+					continue;
 				}
-				bonus += PieceScore[side][piece][to] - PieceScore[side][piece][from];
-			}
-			move_list[i].score += bonus;
-		}
-	}
-}
-
-void SortQuiet(const int startmoves, const int endmoves, move_data ttmove, move_data countermove, move_data killer, move_data killer2)
-{
-	for (int i = startmoves; i < endmoves; i++)
-	{
-		int from = move_list[i].from;
-		int to = move_list[i].to;
-
-		if (from == ttmove.from && to == ttmove.to)
-			continue;
-		if (from == countermove.from && to == countermove.to)
-		{
-			if (move_list[i].score < COUNTER_SCORE)
-				move_list[i].score += COUNTER_SCORE;
-		}
-		else if (from == killer.from && to == killer.to)
-		{
-			if (move_list[i].score < KILLER1_SCORE)
-				move_list[i].score += KILLER1_SCORE;
-		}
-		else if (from == killer2.from && to == killer2.to)
-		{
-			if (move_list[i].score < KILLER2_SCORE)
-				move_list[i].score += KILLER2_SCORE;
-		}
-		if (move_list[i].score >= 1000000)//patch
-		{
-			//Alg(from, to);
-			//z();
-			move_list[i].score = 900000;
-		}
-	}
-}
-
-BITBOARD GetTargets(const int s, const int xs)
-{
-	BITBOARD target = 0;
-	BITBOARD b1, b2;
-	BITBOARD br = 0, bm = 0, bp = 0;
-
-	b1 = b2 = bit_pieces[s][Q] & bit_total_attacks[xs];
-	while (b1)
-	{
-		int sq = NextBit(b1);
-
-		if (mask[sq] & bit_undefended[s])
-		{
-			return mask[sq];
-		}
-		int att = GetLowestQuietAttacker(xs, sq);
-		if (p_value[att] < p_value[Q])
-		{
-			return mask[sq];
-		}
-		else if (LightSEE(xs, s, att, sq))
-		{
-			target |= mask[sq];
-		}
-		else
-		{
-			int att_sq = GetAttackingSquare(xs, sq);
-			if (SEE(xs, att_sq, sq, 0, 0) > 0)
-			{
-				target |= mask[sq];
 			}
 		}
-		b1 &= b1 - 1;
-	}
-
-	br = bit_pieces[s][R] & bit_total_attacks[xs];
-	bm = (bit_pieces[s][N] | bit_pieces[s][B]) & bit_total_attacks[xs];
-	b1 = br;
-	while (b1)
-	{
-		int sq = NextBit(b1);
-
-		if (mask[sq] & bit_undefended[s])
+		if (quiet_count > 0 && depth > 2)
 		{
-			target |= mask[sq];
-		}
-		int att = GetLowestQuietAttacker(xs, sq);
-		if (att == P)
-		{
-			target |= mask[sq];
-		}
-		else if (LightSEE(xs, s, att, sq))
-		{
-			target |= mask[sq];
-		}
-		else
-		{
-			int att_sq = GetAttackingSquare(xs, sq);
-			if (SEE(xs, att_sq, sq, 0, 0) > 0)
+			r = Reduce(i);
+			//if (b[to] == 0 && row2[s][to] == 5)
+			//	r = 0;//
+			if (r == 1)
 			{
-				target |= mask[sq];
+				//??if (depth > 4 && alpha - ev1 >= 200)
+				//	r = 2;
+				if (alpha - ev1 >= 800)
+					;// printf("+");
+			//	r = 3;
 			}
-		}
-		b1 &= b1 - 1;
-	}
-
-	b1 = bm;
-	while (b1)
-	{
-		int sq = NextBit(b1);
-
-		if (mask[sq] & bit_undefended[s])
-		{
-			target |= mask[sq];
-		}
-		else
-		{
-			int att = GetLowestQuietAttacker(xs, sq);
-			if (att == P)
+			//if (quietIndex < 4) return 0;
+			//if (depth >= 10 && quiet_count >= 12) r = 2;
+			//if (depth >= 12 && quiet_count >= 20) r = 3;
+			//*
+			if (depth >= 10 && !pvs && !(flags & ATTACK) && count >= 12)
 			{
-				target |= mask[sq];
+				if (move_score < KILLER2_SCORE)
+				{
+					r = 2;
+				}
+				//if (quiet_count > 16 && move_score < 20000)   r = 3;   // truly awful tail
+				//if (tactical_flag)                         r = 0;   // your threat/en-prise check says volatile
+			}
+			//*/
+			reduce[ply] = r;
+		}
+
+		quiet_count++;
+		extend[ply] = -r;
+		d = depth - 1;
+		int rd = d - r;
+		if (rd < 0)
+			rd = 0;
+
+		if (depth < 3 || r == 0)
+		{
+			if (count == 0)
+			{
+				score = -Search(-beta, -alpha, d, pvs, DO_NULL);
 			}
 			else
 			{
-				if (LightSEE(xs, s, att, sq))
-				{
-					target |= mask[sq];
-				}
+				score = -Search(-alpha - 1, -alpha, d, NO_PV, DO_NULL);
+				if (score > alpha && score < beta)
+					score = -Search(-beta, -alpha, d, PV, DO_NULL);
+			}
+		}
+		/*
+		else
+		{
+			score = -Search(-alpha - 1, -alpha, rd, NO_PV, DO_NULL);
+
+			if (score > alpha && score < beta)
+			{
+				extend[ply] = 0;
+				score = -Search(-alpha - 1, -alpha, d, NO_PV, DO_NULL);
+
+				if (score > alpha)
+					score = -Search(-beta, -alpha, d, PV, DO_NULL);
+			}
+		}
+		//*/
+		//*
+		else
+		{
+			score = -Search(-alpha - 1, -alpha, rd, NO_PV, DO_NULL);
+
+			if (score > alpha && score < beta)
+			{
+				extend[ply] = 0;
+				score = -Search(-beta, -alpha, d, PV, DO_NULL);
+			}
+		}
+
+		UnMakeQuietMove();
+
+		if (stop_search)
+			return alpha;
+
+		count++;
+
+		s = side;
+		xs = xside;
+
+		if (score > bestscore)
+		{
+			bestscore = score;
+			bestmove = move_list[i];
+		}
+		if (score > alpha)
+		{
+			if (score >= beta)
+			{
+				UpdateSequence(ply, depth, move_list[i]);
+				UpdateKillers(i, from, to, score, depth);
+				AddHash(s, depth, score, BETA, from, to, flags);
+				PlyMove[ply] = CUT;
+				if (lookup > -1)
+					cut_tt_nodes++;
 				else
+					cut_nodes++;
+				if (count == 1)
 				{
-					int att_sq = GetAttackingSquare(xs, sq);
-					if (SEE(xs, att_sq, sq, 0, 0) > 0)
+					if (lookup > -1)
+						first_tt_nodes++;
+					else
+						first_nodes++;
+				}
+				if (flag == 1 && depth == 1)
+				{
+					printf(" diff %d ", diff);
+					printf(" ev1 %d ", ev1);
+					printf(" alpha %d ", alpha);
+					printf(" score %d ", score);
+					Alg(from, to);
+					printf(" xxx ");
+					z();
+				}
+				if (diff > bestcut && depth == 1)
+				{
+					bestcut = diff;
+					if (diff > 50)
 					{
-						target |= mask[sq];
+						;
 					}
 				}
-			}
-		}
-		b1 &= b1 - 1;
-	}
-	if (target)
-		return target;
 
-	b1 = bit_pieces[s][P] & bit_total_attacks[xs];
-	while (b1)
-	{
-		int sq = NextBit(b1);
+				av_nodes += count;
+				//if (game_list[hply - 1].flags & MATETHREAT)
 
-		if (mask[sq] & bit_undefended[s])
-		{
-			target |= mask[sq];
-		}
-		else
-		{
-			int att = GetLowestQuietAttacker(xs, sq);
-			if (LightSEE(xs, s, att, sq))
-			{
-				target |= mask[sq];
-			}
-			else
-			{
-				int att_sq = GetAttackingSquare(xs, sq);
-				if (SEE(xs, att_sq, sq, 0, 0) > 0)
+				if (nodes > 1 && quiet_count > 7 && depth > 1)// && move_list[i].score < 0)
 				{
-					target |= mask[sq];
+					//debug++;
+					/*
+					file << " count " << debug << '\n';
+					file << " move " << quiet_count << '\n';
+					file << " startmoves " << startmoves << '\n';
+					file << " endmoves " << endmoves << '\n';
+
+					file << " score " << move_list[i].score << '\n';
+
+					file << " nodes " << nodes << '\n';
+
+					file << " depth " << depth << '\n';
+
+					file << " pvs " << pvs << '\n';
+					file << '\n';
+					*/
+					/*
+					if (nodes > 100000)
+					{
+						cout << " nodes " << nodes << '\n';
+						cout << " depth " << depth << '\n';
+						printf("\n move %d ", quiet_count);
+						Alg(from, to); printf(" score %d \n", move_list[i].score);
+
+						DisplayBoard();
+						cout << " number " << endmoves - startmoves << '\n';
+						for (int j = startmoves; j < endmoves; j++)
+						{
+							from = move_list[j].from;
+							to = move_list[j].to;
+							Alg(from, to);
+							printf(" score %d \n", move_list[j].score);
+						}
+						_getch();
+					}
+					//*/
 				}
+				return beta;
 			}
-		}
-		b1 &= b1 - 1;
-	}
-	return target;
-}
-
-bool LightSEE(const int s, const int xs, const int att1, const int sq)
-{
-	const int piece = b[sq];
-
-	int def1 = GetLowestAttacker(s, sq);
-
-	// If no defender → already handled earlier
-	if (def1 < 0) return true;
-
-	// Net after first recapture
-	int gain = p_value[piece] - p_value[att1];
-
-	// Defender recaptures attacker
-	gain -= p_value[def1];
-
-	// Remove def1 temporarily and look for second attacker
-	int att2 = GetNextAttacker(xs, s, sq,
-		bit_all & ~mask[GetAttackingSquare(s, sq)]);
-
-	if (att2 > -1)
-		gain += p_value[def1] - p_value[att2];
-
-	//	printf(" light ");
-	//	Algebraic(sq);
-	//	z();
-
-	return gain > 0;
-}
-
-bool ContactMate(const int s, const int xs, const int attack_sq)
-{
-	BITBOARD b1 = bit_kingmoves[kingloc[xs]] & ~bit_kingmoves[attack_sq] & ~bit_units[xs];
-	if (attack_sq == H7 && b[F8] == 6)
-	{
-		//z();
-	}
-	while (b1)
-	{
-		int sq = NextBit(b1);
-		if (!(Attack(s, sq)))
-			return false;
-		b1 &= b1 - 1;
-	}
-	return true;
-}
-
-///
-
-static inline int ContinuationScore(int hply, int piece, int to)
-{
-	int s = 0;
-
-	if (hply > 0)
-	{
-		const int p0 = game_list[hply - 1].piece;
-		const int t0 = game_list[hply - 1].to;
-		if (p0 < 0 || t0 < 0 || piece < 0 || to < 0 || p0>5 || t0>63 || piece>5 || to>63)
-		{
-			printf(" bug ");
-			printf(" p %d ", p0);
-			printf(" t0 %d ", t0);
-			printf(" to %d ", to);
-			printf(" piece %d ", piece);
-			z();
-			return 0;
-		}
-		if (game_list[hply - 1].from != 0 || game_list[hply - 1].to != 0)
-			s += cont_hist[p0][t0][piece][to];
-	}
-
-	// optional second continuation (2 plies back):
-	if (hply > 1)
-	{
-		const int p1 = game_list[hply - 2].piece;
-		const int t1 = game_list[hply - 2].to;
-		if (game_list[hply - 2].from != 0 || game_list[hply - 2].to != 0)
-			s += cont2_hist[p1][t1][piece][to] >> 1; // half weight
-	}
-
-	return s;
-}
-
-// in your loop over generated quiet moves:
-/*
-if (is_quiet)
-{
-	int sc = QUIET_BASE;
-
-	// Normal history (optional, keep it)
-	// sc += HIST_SCALE * history[side][piece][to];
-
-	// Continuation history replaces killers+counters:
-	sc += CONT_SCALE * ContinuationScore(ply, piece, to);
-
-	move_list[i].score = sc;
-}
-*/
-
-static inline int Bonus(int depth)
-{
-	// common shape: depth^2-ish
-	return depth * depth + 2 * depth;
-}
-/*
-void UpdateContinuationOnCutoff(int ply, int depth, const move_data& m, int was_quiet)
-{
-	if (!was_quiet) return;
-
-	const int b = Bonus(depth);
-
-	const int mp = m.piece;
-	const int mt = m.to;
-
-	if (ply > 0)
-	{
-		const int p0 = game_list[ply - 1].piece;
-		const int t0 = game_list[ply - 1].to;
-		UpdateWithGravity(cont_hist[p0][t0][mp][mt], +b);
-	}
-
-	if (ply > 1)
-	{
-		const int p1 = game_list[ply - 2].piece;
-		const int t1 = game_list[ply - 2].to;
-		UpdateWithGravity(cont2_hist[p1][t1][mp][mt], +b);
-	}
-}
-*/
-
-void UpdateSequence(const int ply, const int depth, const move_data& m)
-{
-	const int bonus = Bonus(depth);
-
-	const int to = m.to;
-	int from = m.from;
-	int piece = b[from];
-	/*
-	if (hply > 0)
-	{
-		printf("\n seq ");
-		Alg(m.from, m.to);
-	}
-	*/
-
-	if (hply > 0)
-	{
-		const int p0 = game_list[hply - 1].piece;
-		const int t0 = game_list[hply - 1].to;
-		//printf(" 1 ");
-		//Alg(game_list[hply - 1].from, t0);
-		UpdateWithGravity(cont_hist[p0][t0][piece][to], +bonus);
-	}
-
-	//printf(" ");
-	if (hply > 1)
-	{
-		const int p1 = game_list[hply - 2].piece;
-		const int t1 = game_list[hply - 2].to;
-		//printf(" 2 ");
-		//Alg(game_list[hply - 2].from, t1);
-		if (p1 < 6)
-			UpdateWithGravity(cont2_hist[p1][t1][piece][to], +bonus);
-	}
-	//z();
-}
-
-// Suppose you have stored tried quiet moves (or you can loop from startmoves..current index)
-void PenaliseTriedQuiets(int ply, int depth, int start, int tried_end, const move_data& best)
-{
-	const int pen = Bonus(depth) / 2;
-
-	for (int j = start; j < tried_end; ++j)
-	{
-		const move_data& m = move_list[j];
-
-		if (m.from == best.from && m.to == best.to && m.flags == best.flags) continue;
-
-		const int mp = m.piece, mt = m.to;
-
-		if (ply > 0)
-		{
-			const int p0 = game_list[ply - 1].piece;
-			const int t0 = game_list[ply - 1].to;
-			UpdateWithGravity(cont_hist[p0][t0][mp][mt], -pen);
-		}
-		if (ply > 1)
-		{
-			const int p1 = game_list[ply - 2].piece;
-			const int t1 = game_list[ply - 2].to;
-			UpdateWithGravity(cont2_hist[p1][t1][mp][mt], -pen);
+			UpdatePV(move_list[i]);
+			alpha = score;
 		}
 	}
+
+	all_nodes++;
+	PlyMove[ply] = ALL;
+
+	if (!count)
+	{
+		return 0;
+	}
+
+	if (fifty >= 100)
+		return 0;
+
+	if (depth == 1 && old_alpha < alpha && flag == 1)
+	{
+		printf(" diff %d ", diff);
+		printf(" ev1 %d ", ev1);
+		printf(" alpha %d ", alpha);
+		printf(" score %d ", score);
+		Alg(from, to);
+		z();
+	}
+
+	if (alpha > initial_alpha)
+	{
+		AddHash(side, depth, alpha, EXACT, bestmove.from, bestmove.to, bestmove.flags);
+	}
+	else
+	{
+		if (depth > 3)
+			AddHash(side, depth, alpha, ALPHA, bestmove.from, bestmove.to, bestmove.flags);
+	}
+	return alpha;
 }
 
-static inline int Clamp(int v, int lo, int hi)
-{
-	if (v < lo) return lo;
-	if (v > hi) return hi;
-	return v;
-}
-
-// "Gravity" / decay update: adds bonus but pulls existing values back toward 0.
-// This keeps scores bounded and responsive.
-static inline void UpdateWithGravity(int& cell, int bonus)
-{
-	// tune these:
-	// LIMIT: max magnitude in table
-	// G: decay factor (bigger = slower decay)
-	const int LIMIT = 16000;   // good starting point
-	const int G = 32;      // 16..64 typical
-
-	// gravity toward 0
-	cell -= cell / G;
-
-	// add new bonus
-	cell += bonus;
-
-	// clamp
-	cell = Clamp(cell, -LIMIT, LIMIT);
-}
 
