@@ -38,11 +38,13 @@ int GetLowestLineAttacker(const int s, const int sq);
 
 int GetAttackingSquare(const int s, const int sq);
 
-bool KingLessAttack(const int s, const int sq); 
+bool KingLessAttack(const int s, const int sq);
 void BuildAttackMap();
 
 bool Attack2(const int s, const int sq, const BITBOARD occ, const BITBOARD);
-bool LineAttack2(const int s, const int sq, const BITBOARD occ, const BITBOARD not_mover);
+bool LineAttack2(const int s, const int sq, const BITBOARD occ);
+
+bool IsCheck(const int p, const int sq, const int king);
 
 bool Attack(const int s, const int sq)
 {
@@ -109,7 +111,7 @@ int GetAttackingSquare(const int s, const int sq)//magic
 	BITBOARD b3 = (b1 | b2) & bit_pieces[s][Q];
 	if (b3)
 		return NextBit(b3);
-	
+
 	if (bit_kingmoves[sq] & bit_pieces[s][K])
 		return kingloc[s];
 	return -1;
@@ -123,16 +125,25 @@ bool IsCheck(const int p, const int sq, const int king)
 		{
 			if (!(bit_between[sq][king] & bit_all))
 			{
-				if (b[p] > 1)
-				{
-					return true;
-				}
+				return true;
 			}
 		}
 	}
 	else
 	{
 		if (bit_pawncaptures[xside][sq] & mask[king])
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool IsLineCheck(const int p, const int sq, const int king)
+{
+	if (bit_moves[b[p]][sq] & mask[king])
+	{
+		if (!(bit_between[sq][king] & bit_all))
 		{
 			return true;
 		}
@@ -155,7 +166,7 @@ int Check(const int s, const int sq)
 				checker_square = i;
 				count++;
 			}
-		} 
+		}
 	}
 	*/
 	BITBOARD b1 = bit_knightmoves[sq] & bit_pieces[s][N];
@@ -168,13 +179,13 @@ int Check(const int s, const int sq)
 
 	if (bit_left[!s][sq] & bit_pieces[s][P])
 	{
-			checker_square = pawnleft[!s][sq];
-				count++;
+		checker_square = pawnleft[!s][sq];
+		count++;
 	}
 	else if (bit_right[!s][sq] & bit_pieces[s][P])
 	{
-				checker_square = pawnright[!s][sq];
-				count++;
+		checker_square = pawnright[!s][sq];
+		count++;
 	}
 	b1 = bit_bishopmoves[sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
 	b1 |= (bit_rookmoves[sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
@@ -189,7 +200,7 @@ int Check(const int s, const int sq)
 		}
 		b1 &= b1 - 1;
 	}
-	if(count > 1)
+	if (count > 1)
 	{
 		return DOUBLE_CHECK;
 	}
@@ -205,12 +216,12 @@ bool LineAttack(const int s, const int sq)
 	return false;
 }
 
-bool LineAttack2(const int s, const int sq, const BITBOARD occ, const BITBOARD not_mover)
+bool LineAttack2(const int s, const int sq, const BITBOARD occ)
 {
-	BITBOARD b1 = bit_bishopmoves[sq] & (bit_pieces[s][B] | bit_pieces[s][Q]) & not_mover;
-	b1 |= (bit_rookmoves[sq] & (bit_pieces[s][R] | bit_pieces[s][Q])) & not_mover;
+	BITBOARD b1 = bit_bishopmoves[sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
+	b1 |= (bit_rookmoves[sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
 
-	while (b1)  
+	while (b1)
 	{
 		int i = NextBit(b1);
 		if (!(bit_between[i][sq] & bit_all & occ))
@@ -226,32 +237,6 @@ bool RookAttack(const int s, const int from, const int to)
 	if (b1 && !(bit_between[to][NextBit(b1)] & bit_all))
 	{
 		return true;
-	}
-	return false;
-}
-
-bool isPinned(const int s, const int k, const int pinned, BITBOARD b1)
-{
-	while (b1)
-	{
-		int sq = NextBit(b1);
-		if (!(bit_between[sq][k] & bit_all & not_mask[pinned]))
-			return true;
-		b1 &= b1 - 1;
-	}
-	return false;
-}
-
-bool isPinnedLinePiece(const int s, const int k, const int pinned, const int to, BITBOARD b1)
-{	
-	b1 &= not_mask[to];
-
-	while (b1)
-	{
-		int sq = NextBit(b1);
-		if (!(bit_between[sq][k] & bit_all & not_mask[pinned]))
-			return true;
-		b1 &= b1 - 1;
 	}
 	return false;
 }
@@ -281,7 +266,7 @@ int GetLowestAttacker(const int s, const int sq)
 }
 
 int GetLowestQuietAttacker(const int s, const int to)
-{		
+{
 	if (bit_attacked[s][P] & mask[to])
 		return P;
 	if (bit_attacked[s][N] & mask[to])
@@ -362,7 +347,7 @@ void BuildAttackMap()
 
 	bit_attacked[1][P] = (bit_pieces[1][P] & not_a_file) >> 9;
 	bit_attacked[1][P] |= (bit_pieces[1][P] & not_h_file) >> 7;
-	
+
 	for (int s = 0; s < 2; s++)//what they attack
 	{
 		bit_attacked[s][N] = GetKnightAttacks(s);
@@ -377,13 +362,13 @@ void BuildAttackMap()
 		bit_weaker[s][B] = (bit_attacked[s][P]);
 		bit_weaker[s][N] = (bit_attacked[s][P]);
 		bit_weaker[s][R] = (bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B]);
-		bit_weaker[s][Q] = (bit_weaker[s][R] | bit_attacked[s][R]); 
+		bit_weaker[s][Q] = (bit_weaker[s][R] | bit_attacked[s][R]);
 		bit_total_attacks[s] = (bit_weaker[s][Q] | bit_attacked[s][Q] | bit_attacked[s][K]);
 	}
 
 	for (int s = 0; s < 2; s++)//what attacks them
 	{
-		BITBOARD bit_every = 
+		BITBOARD bit_every =
 			bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B] | bit_attacked[s][R] | bit_attacked[s][Q] | bit_attacked[s][K];
 		bit_defend_to[s][N] = bit_every & ~bit_attacked[s][N];
 		bit_defend_to[s][B] = bit_every & ~bit_attacked[s][B];
@@ -410,6 +395,7 @@ void BuildAttackMap()
 
 	bit_defended[side][ply] = bit_units[side] & bit_total_attacks[xside] & bit_total_attacks[side];
 }
+
 
 
 
