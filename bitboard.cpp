@@ -7,22 +7,16 @@
 #include <intrin.h>
 #include <cstdint>
 
-BITBOARD bit_high[64];
-BITBOARD bit_low[64];
-
-void SetBitHigh();
 bool IsOneBit(BITBOARD x);
 int CountBits(BITBOARD b1);
 
 int NextHighBit(BITBOARD bb);
 
-int PopLSB(BITBOARD &bb);
-
 int kingqueen[64][64];
 int kingknight[64][64];
 int kingking[64][64];
-int taxi[] = { 0,16,12,8,4,0,0,0 };
-int kingtaxi[] = { 0,24,20,16,12,8,4,0 };
+constexpr int taxi[] = { 0,16,12,8,4,0,0,0 };
+constexpr int kingtaxi[] = { 0,24,20,16,12,8,4,0 };
 
 const int col[64] =
 {
@@ -48,19 +42,20 @@ const int row[64] =
 7,7,7,7,7,7,7,7
 };
 
-const BITBOARD debruijn64 = 0x07EDD5E59A4E28C2;
+const int colors[64] =
+{
+	 1,0,1,0,1,0,1,0,
+	 0,1,0,1,0,1,0,1,
+	 1,0,1,0,1,0,1,0,
+	 0,1,0,1,0,1,0,1,
+	 1,0,1,0,1,0,1,0,
+	 0,1,0,1,0,1,0,1,
+	 1,0,1,0,1,0,1,0,
+	 0,1,0,1,0,1,0,1
+};
 
-const int colors[64] = {
-	 1,0,1,0,1,0,1,0,
-	 0,1,0,1,0,1,0,1,
-	 1,0,1,0,1,0,1,0,
-	 0,1,0,1,0,1,0,1,
-	 1,0,1,0,1,0,1,0,
-	 0,1,0,1,0,1,0,1,
-	 1,0,1,0,1,0,1,0,
-	 0,1,0,1,0,1,0,1 };
-
-const int nwdiag[64] = {
+const int nwdiag[64] =
+{
 	 14,13,12,11,10, 9, 8, 7,
 	 13,12,11,10, 9, 8, 7, 6,
 	 12,11,10, 9, 8, 7, 6, 5,
@@ -68,9 +63,11 @@ const int nwdiag[64] = {
 	 10, 9, 8, 7, 6, 5, 4, 3,
 	  9, 8, 7, 6, 5, 4, 3, 2,
 	  8, 7, 6, 5, 4, 3, 2, 1,
-	  7, 6, 5, 4, 3, 2, 1, 0 };
+	  7, 6, 5, 4, 3, 2, 1, 0
+};
 
-const int nediag[64] = {
+const int nediag[64] =
+{
 	 7, 8,9,10,11,12,13,14,
 	 6, 7,8, 9,10,11,12,13,
 	 5, 6,7, 8, 9,10,11,12,
@@ -78,7 +75,8 @@ const int nediag[64] = {
 	 3, 4,5, 6, 7, 8, 9,10,
 	 2, 3,4, 5, 6, 7, 8, 9,
 	 1, 2,3, 4, 5, 6, 7, 8,
-	 0, 1,2, 3, 4, 5, 6, 7 };
+	 0, 1,2, 3, 4, 5, 6, 7
+};
 
 int h_check[64][64];
 int v_check[64][64];
@@ -264,7 +262,6 @@ void SetBits()
 	SetDifference();
 	SetKingDistance();
 	SetBitAfter();
-	SetBitHigh();
 }
 
 void SetColors()
@@ -294,14 +291,12 @@ void SetRanks()
 		row2[0][x] = row[x];
 		row2[1][x] = 7 - row[x];
 	}
-
 	for (int s = 0; s < 2; s++)
 		for (int x = 0; x < 64; x++)
 		{
 			lastsquare[0][x] = col[x] + A8;
 			lastsquare[1][x] = col[x];
 		}
-
 	memset(adjfile, 0, sizeof(adjfile));
 	for (int x = 0; x < 64; x++)
 	{
@@ -410,19 +405,16 @@ void SetRanksFiles()
 				SetBit(mask_ranks[1][y], x);
 			}
 		}
-
 	for (int x = 0; x < 64; x++)
 		for (int y = 0; y < 64; y++)
 		{
 			if (col[x] == col[y])
 				SetBit(mask_cols[x], y);
 		}
-
 	for (int x = 0; x < 64; x++)
 	{
 		not_mask[x] = ~mask[x];
 	}
-
 	for (int x = 0; x < 8; x++)
 	{
 		not_mask_files[x] = ~mask_files[x];
@@ -568,31 +560,31 @@ void SetChecks()
 			}
 
 			b1 = bit_bishopmoves[x] & bit_bishopmoves[y];
-			
+
 			left_check[x][y] = NextBit(b1);
 			b1 &= b1 - 1;
-			if(b1)
+			if (b1)
 				right_check[x][y] = NextBit(b1);
-/*
-			b1 = bit_bishopmoves[x] & bit_bishopmoves[y] & mask_nwdiag[x];
+			/*
+						b1 = bit_bishopmoves[x] & bit_bishopmoves[y] & mask_nwdiag[x];
 
-			if (b1 && !(bit_bishopmoves[x] & mask[y]))
-			{
-				sq = NextBit(b1);
-				left_check[x][y] = sq;
-			}
+						if (b1 && !(bit_bishopmoves[x] & mask[y]))
+						{
+							sq = NextBit(b1);
+							left_check[x][y] = sq;
+						}
 
-			b1 = bit_bishopmoves[x] & bit_bishopmoves[y] & mask_nediag[x];;
-			if (b1 && !(bit_bishopmoves[x] & mask[y]))
-			{
-				sq = NextBit(b1);
-				right_check[x][y] = sq;
-			}
-*/
+						b1 = bit_bishopmoves[x] & bit_bishopmoves[y] & mask_nediag[x];;
+						if (b1 && !(bit_bishopmoves[x] & mask[y]))
+						{
+							sq = NextBit(b1);
+							right_check[x][y] = sq;
+						}
+			*/
 		}
 
 	memset(q_check, -1, sizeof(q_check));
-	int high = 0;
+
 	for (int x = 0; x < 64; x++)
 		for (int y = 0; y < 64; y++)
 		{
@@ -612,13 +604,12 @@ void SetChecks()
 
 void SetDifference()
 {
-	int col_diff, row_diff;
 	for (int x = 0; x < 64; x++)
 	{
 		for (int y = 0; y < 64; y++)
 		{
-			col_diff = abs(col[x] - col[y]);
-			row_diff = abs(row[x] - row[y]);
+			int col_diff = abs(col[x] - col[y]);
+			int row_diff = abs(row[x] - row[y]);
 			if (col_diff > row_diff)
 			{
 				difference[x][y] = col_diff;
@@ -723,7 +714,6 @@ void SetBetweenVector()
 					for (int z = y + 1; z < x; z++)
 						SetBit(bit_between[x][y], z);
 			}
-
 			if (col[x] == col[y])
 			{
 				if (y > x)
@@ -733,7 +723,6 @@ void SetBetweenVector()
 					for (int z = y + 8; z < x; z += 8)
 						SetBit(bit_between[x][y], z);
 			}
-
 			if (nwdiag[x] == nwdiag[y])
 			{
 				if (y > x)
@@ -743,7 +732,6 @@ void SetBetweenVector()
 					for (int z = y + 7; z < x; z += 7)
 						SetBit(bit_between[x][y], z);
 			}
-
 			if (nediag[x] == nediag[y])
 			{
 				if (y > x)
@@ -785,7 +773,6 @@ void SetMaskPawns()
 				}
 
 			}
-
 			if (abs(col[x] - col[y]) < 2)
 			{
 				if (row[x] < row[y] && row[y] < 7)
@@ -793,7 +780,6 @@ void SetMaskPawns()
 				if (row[x] > row[y] && row[y] > 0)
 					SetBit(mask_passed[1][x], y);
 			}
-
 			if (abs(col[x] - col[y]) == 1 && row[x] != 0 && row[x] != 7)
 			{
 				if (row[x] >= row[y] || (row[x] == 1 && row[y] == 2))
@@ -801,7 +787,6 @@ void SetMaskPawns()
 				if (row[x] <= row[y] || (row[x] == 6 && row[y] == 5))
 					SetBit(mask_backward[1][x], y);
 			}
-
 			if (abs(col[x] - col[y]) == 1)
 			{
 				SetBit(mask_isolated[x], y);
@@ -814,7 +799,6 @@ void SetMaskPawns()
 			{
 				SetBit(mask_right_col[x], y);
 			}
-
 			if (col[x] == col[y])
 			{
 				if (row[x] < row[y])
@@ -830,19 +814,18 @@ void SetMaskPawns()
 		//PrintBitBoard(mask_passed[0][x]);
 		//_getch();
 	}
-
-	for (int k = 0; k < 64; ++k)
+	for (int x = 0; x < 64; ++x)
 	{
-		int kr = row[k];
-		int kc = col[k];
+		int kr = row[x];
+		int kc = col[x];
 
-		mask_squareking[0][k] = 0;
-		mask_squareking[1][k] = 0;
+		mask_squareking[0][x] = 0;
+		mask_squareking[1][x] = 0;
 
-		for (int p = 0; p < 64; ++p)
+		for (int y = 0; y < 64; ++y)
 		{
-			int pr = row[p];
-			int pc = col[p];
+			int pr = row[y];
+			int pc = col[y];
 
 			int dr = kr - pr;
 			if (dr < 0) dr = -dr;
@@ -851,18 +834,18 @@ void SetMaskPawns()
 
 			int kingMoves = (dr > dc) ? dr : dc;
 
-			int pawnMovesW = 7 - row2[0][p];   // moves for a white pawn on p to promote
+			int pawnMovesW = 7 - row2[0][y];   // moves for a white pawn on y to promote
 			if (kingMoves > pawnMovesW)
 			{
-				// Black king on k is NOT in the square of this white pawn on p
-				SetBit(mask_squareking[0][k], p);
+				// Black king on x is NOT in the square of this white pawn on y
+				SetBit(mask_squareking[0][x], y);
 			}
 
-			int pawnMovesB = 7 - row2[1][p];   // moves for a black pawn on p to promote
+			int pawnMovesB = 7 - row2[1][y];   // moves for a black pawn on y to promote
 			if (kingMoves > pawnMovesB)
 			{
-				// White king on k is NOT in the square of this black pawn on p
-				SetBit(mask_squareking[1][k], p);
+				// White king on x is NOT in the square of this black pawn on y
+				SetBit(mask_squareking[1][x], y);
 			}
 		}
 	}
@@ -959,8 +942,7 @@ bool SameLine(const int a, const int b, const int c)
 
 void SetBitAfter()
 {
-	int z;
-for (int x = 0; x < 64; x++)
+	for (int x = 0; x < 64; x++)
 		for (int y = 0; y < 64; y++)
 		{
 			if (x == y)
@@ -968,84 +950,49 @@ for (int x = 0; x < 64; x++)
 			if (row[x] == row[y])
 			{
 				if (y > x)
-					for (z = y; z <= row[y] * 8 + 7; z++)
+					for (int z = y; z <= row[y] * 8 + 7; z++)
 						SetBit(bit_after[x][y], z);
 				else
-					for (z = y; z >= row[y] * 8; z--)
+					for (int z = y; z >= row[y] * 8; z--)
 						SetBit(bit_after[x][y], z);
 			}
 
 			if (col[x] == col[y])
 			{
 				if (y > x)
-					for (z = y; z <= 56 + col[y]; z += 8)
+					for (int z = y; z <= 56 + col[y]; z += 8)
 						SetBit(bit_after[x][y], z);
 				else
-					for (z = y; z >= col[y]; z -= 8)
+					for (int z = y; z >= col[y]; z -= 8)
 						SetBit(bit_after[x][y], z);
 			}
-			//*
 			if (nwdiag[x] == nwdiag[y])
 			{
 				if (y > x)
-					for (z = y; z <= GetEdge(x, 7); z += 7)
+					for (int z = y; z <= GetEdge(x, 7); z += 7)
 						SetBit(bit_after[x][y], z);
 				else
-					for (z = y; z >= GetEdge(x, -7); z -= 7)
+					for (int z = y; z >= GetEdge(x, -7); z -= 7)
 						SetBit(bit_after[x][y], z);
 			}
 
 			if (nediag[x] == nediag[y])
 			{
 				if (y > x)
-					for (z = y; z <= GetEdge(x, 9); z += 9)
+					for (int z = y; z <= GetEdge(x, 9); z += 9)
 						SetBit(bit_after[x][y], z);
 				else
-					for (z = y; z >= GetEdge(x, -9); z -= 9)
+					for (int z = y; z >= GetEdge(x, -9); z -= 9)
 						SetBit(bit_after[x][y], z);
 			}
-			//*/
 		}
-
-	for (int x = 0; x < 64; x++)
-		for (int y = 0; y < 64; y++)
-		{
-			if(bit_after[x][y])
-			{
-			//printf("x %d y %d ",x,y);
-			//PrintBitBoard(~bit_after[x][y]);
-			}
-			//bit_after[x][y] = ~bit_after[x][y];
-		}
-}
-
-void SetBitHigh()
-{
-	memset(bit_high, 0, sizeof(bit_high));
-	for (int x = 0; x < 64; x++)
-	{
-		for (int y = x + 1; y < 64; y++)
-		{
-			bit_high[x] |= mask[y];
-		}
-		for (int y = 0; y < x; y++)
-		{
-			bit_low[x] |= mask[y];
-		}
-		//PrintBitBoard(bit_low[x]);
-		//Algebraic(x);
-		//_getch();
-	}
+	//PrintBitBoard(bit_after[B2][E5]);
+	//PrintBitBoard(bit_after[E1][E5]);
 }
 
 bool IsOneBit(BITBOARD x)
 {
 	return x && !(x & (x - 1));
-}
-
-bool IsOneBit2(BITBOARD x)//x>0
-{
-return !(x & (x - 1));
 }
 
 int CountBits(BITBOARD b1)
@@ -1064,31 +1011,15 @@ int NextHighBit(BITBOARD bb)
 {
 	unsigned long sq;
 	_BitScanReverse64(&sq, bb);   // bb must be non-zero
-	return sq;               
+	return sq;
 }
 
 static inline int msb_index(uint64_t bb)
 {
 	unsigned long idx;
 	_BitScanReverse64(&idx, bb);   // bb must be non-zero
-	return (int)idx;               // 0..63
+	return (int)idx;
 }
-
-int LSB64(uint64_t bb) {
-	unsigned long index;
-//	if (_BitScanForward64(&index, bb))
-//		return static_cast<int>(index);
-	return -1;
-}
-
-/*
-int PopLSB(BITBOARD &bb) {
-    unsigned long idx;
-    _BitScanForward64(&idx, bb);  // find index of least significant 1
-    bb &= bb - 1;                 // clear that bit
-    return (int)idx;
-}
-*/
 
 #define U64 uint64_t
 
@@ -1098,7 +1029,6 @@ U64 rookMasks[64];
 U64 bishopMasks[64];
 U64* rookAttacks[64];
 U64* bishopAttacks[64];
-
 
 
 
