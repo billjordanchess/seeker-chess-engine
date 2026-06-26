@@ -3,6 +3,10 @@
 
 static int index[64];
 
+void UpdatePawn(const int s, const int from, const int to);
+void RemovePawn(const int s, const int sq);
+void AddPawn(const int s, const int sq);
+
 void UnMakeCapture();
 void AfterCastle(const int);
 void BeforeCastle(const int);
@@ -24,110 +28,121 @@ void UpdatePawn(const int s, const int from, const int to)
 	AddPawnKeys(s, from, to);
 }
 
-void UpdatePiece(const int s, const int p, const int from, const int to)
+void RemovePawn(const int s, const int sq)
 {
-	//Debug(14);
+	AddKey(s, P, sq);
+	AddPawnKey(s, sq);
+	b[sq] = EMPTY;
+	const BITBOARD m = not_mask[sq];	
+	bit_units[s] &= m;
+	bit_all &= m;
+	bit_pieces[s][P] &= m;
+	pawn_mat[s] -= P_VALUE;
+}
+
+void AddPawn(const int s, const int sq)
+{
+	AddKey(s, P, sq);
+	AddPawnKey(s, sq);
+	b[sq] = P;	
+	const BITBOARD m = mask[sq];
+	bit_units[s] |= m;
+	bit_all |= m;
+	bit_pieces[s][P] |= m;
+	pawn_mat[s] += P_VALUE;
+}
+
+void UpdatePiece(const int s, const int piece, const int from, const int to)
+{
 	bit_units[s] &= not_mask[from];
 	bit_units[s] |= mask[to];
 	bit_all = bit_units[0] | bit_units[1];
-	AddKeys(s, p, from, to);
+	AddKeys(s, piece, from, to);
 
-	b[to] = p;
+	b[to] = piece;
 	b[from] = EMPTY;
-	bit_pieces[s][p] &= not_mask[from];
-	bit_pieces[s][p] |= mask[to];
+	bit_pieces[s][piece] &= not_mask[from];
+	bit_pieces[s][piece] |= mask[to];
 
-	if (p == P)
+	if (piece == P)
 	{
 		AddPawnKeys(s, from, to);
 		return;
 	}
-	table_score[s] -= PieceScore[s][p][from];
-	table_score[s] += PieceScore[s][p][to];
-	
+	table_score[s] -= PieceScore[s][piece][from];
+	table_score[s] += PieceScore[s][piece][to];
+
 	index[to] = index[from];
-	pieces[s][p][index[to]] = to;
-	kingloc[s] = (p == K) ? to : kingloc[s];
-	//Debug(18);
-	//assert(p < 6);
+	pieces[s][piece][index[to]] = to;
+	kingloc[s] = (piece == K) ? to : kingloc[s];
 }
 
-void RemovePiece(const int s, const int p, const int sq)
+void RemovePiece(const int s, const int piece, const int sq)
 {
-	//assert(p < 6);
 	const BITBOARD m = not_mask[sq];
-    AddKey(s, p, sq);
-    b[sq] = EMPTY;
-    bit_units[s] &= m;
-    bit_all &= m;
-    bit_pieces[s][p] &= m;
+	bit_units[s] &= m;
+	bit_all &= m;
 
-    if (p == P) {
-        pawn_mat[s] -= P_VALUE;
-        AddPawnKey(s, sq);
-        return;
-    }
+	assert(piece < 6);
+	bit_pieces[s][piece] &= m;
+	AddKey(s, piece, sq);
+	b[sq] = EMPTY;
 
-    table_score[s] -= PieceScore[s][p][sq];
-    piece_mat[s]   -= piece_value[p];
-
-		total[s][p]--;
-
-	if (index[sq] < total[s][p])
-	{
-		for(int x=0;x< total[s][p];x++)
-		{
-			if(pieces[s][p][x]==sq)
-			{
-		pieces[s][p][x] = pieces[s][p][total[s][p]];
-		index[pieces[s][p][x]] = x;
-		break;
-			}
-		}
+	if (piece == P) {
+		pawn_mat[s] -= P_VALUE;
+		AddPawnKey(s, sq);
+		return;
 	}
-	/*
 
-   const int idx  = index[sq];
-   const int last = total[s][p] - 1;
-    // (optional but wise)
-    assert(total[s][p] > 0);
-    assert(0 <= idx && idx <= last);
+	table_score[s] -= PieceScore[s][piece][sq];
+	piece_mat[s] -= piece_value[piece];
 
-    if (idx != last) {
-        const int last_sq = pieces[s][p][last];
-        pieces[s][p][idx] = last_sq;
-        index[last_sq] = idx;
-    }
-    total[s][p]--;
-    index[sq] = -1;      
-	*/
-	//Debug(12);
-	assert(p < 6);
+	assert(total[s][piece] > 0);
+
+	const int idx = index[sq];
+	if (pieces[s][piece][idx] != sq)
+	{
+		Alg(sq, sq);
+		z();
+	}
+	const int last = total[s][piece] - 1;
+
+	assert(idx >= 0);
+	assert(idx <= last);
+	assert(pieces[s][piece][idx] == sq);
+
+	if (idx != last)
+	{
+		const int last_sq = pieces[s][piece][last];
+
+		pieces[s][piece][idx] = last_sq;
+		index[last_sq] = idx;
+	}
+
+	total[s][piece]--;
+	index[sq] = -1;
 }
 
-void AddPiece(const int s, const int p, const int sq)
+void AddPiece(const int s, const int piece, const int sq)
 {
-	assert(p < 6);
-	b[sq] = p;
-	AddKey(s, p, sq);
+	b[sq] = piece;
+	AddKey(s, piece, sq);
 	const BITBOARD m = mask[sq];
 	bit_units[s] |= m;
 	bit_all |= m;
-	bit_pieces[s][p] |= m;
+	bit_pieces[s][piece] |= m;
 
-	if (p == P)
+	if (piece == P)
 	{
 		pawn_mat[s] += P_VALUE;
 		AddPawnKey(s, sq);
 		return;
 	}
-	table_score[s] += PieceScore[s][p][sq];
-	index[sq] = total[s][p];
-	pieces[s][p][total[s][p]] = sq;
-	total[s][p]++;
-	piece_mat[s] += piece_value[p];
-	//Debug(13);
-	assert(p < 6);
+	table_score[s] += PieceScore[s][piece][sq];
+	index[sq] = total[s][piece];
+	pieces[s][piece][total[s][piece]] = sq;
+	total[s][piece]++;
+	piece_mat[s] += piece_value[piece];
 }
 
 bool MakeMove(const int from, const int to, const int flags)
@@ -168,7 +183,7 @@ bool MakeMove(const int from, const int to, const int flags)
 
 		if (flags & EP)
 		{
-			RemovePiece(xside, P, pawnplus[xside][to]);
+			RemovePawn(xside, pawnplus[xside][to]);
 		}
 		if (b[to] != EMPTY)
 		{
@@ -176,7 +191,7 @@ bool MakeMove(const int from, const int to, const int flags)
 		}
 		if (row2[side][to] == 7)
 		{
-			RemovePiece(side, P, from);
+			RemovePawn(side, from);
 			AddPiece(side, Q, to);
 			m->flags |= PROMOTE;
 		}
@@ -206,8 +221,6 @@ bool MakeMove(const int from, const int to, const int flags)
 
 	if (Attack(side, kingloc[xside]))
 	{
-		//Alg(from,to);
-		//z();
 		UnMakeMove();
 		return false;
 	}
@@ -224,35 +237,37 @@ void UnMakeMove()
 	castle = m->castle;
 	fifty = m->fifty;
 
+	const int from = m->from;
+	const int to = m->to;
+
 	if (m->flags & PROMOTE)
 	{
-		AddPiece(side, P, m->from);
-		RemovePiece(side, b[m->to], m->to);
+		RemovePiece(side, b[to], to);
+		AddPawn(side, from);
 	}
 	else
 	{
-		UpdatePiece(side, b[m->to], m->to, m->from);
+		UpdatePiece(side, b[to], to, from);
 	}
 	if (m->capture != EMPTY)
-	{ 
-		AddPiece(xside, m->capture, m->to);
+	{
+		AddPiece(xside, m->capture, to);
 	}
 
-	if(m->flags & CASTLE)
+	if (m->flags & CASTLE)
 	{
-		int from, to;
-		to = castle_start[m->to];
-		from = castle_dest[m->to];
-		UpdatePiece(side, R, from, to);
+		const int to2 = castle_start[to];
+		const int from2 = castle_dest[to];
+		UpdatePiece(side, R, from2, to2);
 		KingScore[side][squares[side][E1]] = 10;
-		if (col[to] == 7)
+		if (col[to] == 6)
 		{
 			BeforeCastle(side);
 		}
 	}
 	if (m->flags & EP)
 	{
-		AddPiece(xside, P, pawnplus[xside][m->to]);
+		AddPawn(xside, pawnplus[xside][m->to]);
 	}
 }
 
@@ -269,27 +284,26 @@ bool MakeCapture(const int from, const int to, const int flags)
 	m->fifty = 0;
 	m->streak = 0;
 	m->hash = currentkey;
-	m->castle = castle; 
+	m->castle = castle;
 
 	castle &= castle_mask[from] & castle_mask[to];
-	
+
 	if (b[to] != EMPTY)
 	{
 		RemovePiece(xside, b[to], to);
 	}
 	else if (mover == P && col[from] != col[to])
 	{
-		m->flags |= EP;//
-		RemovePiece(xside, P, pawnplus[xside][to]);
+		m->flags |= EP;
+		RemovePawn(xside, pawnplus[xside][to]);
 	}
 
 	if (mover == P)
 	{
 		if (row2[side][to] == 7)
 		{
-			RemovePiece(side, P, from);
-			AddPiece(side, Q, to); 
-			//m->piece = Q;//
+			RemovePawn(side, from);
+			AddPiece(side, Q, to);
 			m->flags |= PROMOTE;
 		}
 		else
@@ -305,8 +319,6 @@ bool MakeCapture(const int from, const int to, const int flags)
 	xside ^= 1;
 	if (Attack(side, kingloc[xside]))
 	{
-		//Alg(from, to);
-		//z();
 		UnMakeCapture();
 		return false;
 	}
@@ -330,7 +342,7 @@ void UnMakeCapture()
 
 	if (h->flags & PROMOTE)
 	{
-		AddPiece(side, P, from);
+		AddPawn(side, from);
 		RemovePiece(side, b[to], to);
 		if (captured != EMPTY)
 		{
@@ -343,9 +355,9 @@ void UnMakeCapture()
 	{
 		AddPiece(xside, captured, to);
 	}
-	else if(h->flags & EP)
+	else if (h->flags & EP)
 	{
-		AddPiece(xside, P, pawnplus[xside][to]);
+		AddPawn(xside, pawnplus[xside][to]);
 	}
 }
 
@@ -388,17 +400,12 @@ bool MakeEvasion(const int from, const int to)
 
 	++ply;
 	++hply;
-	//
 
-	//
 	UpdatePiece(side, b[from], from, to);
 	side ^= 1;
 	xside ^= 1;
 	if (Attack(side, kingloc[xside]))
 	{
-		//printf(" ev ");
-		//	Alg(from,to);
-		//	z();
 		UnMakeEvasion();
 		return false;
 	}
@@ -465,14 +472,14 @@ bool MakeQuietMove(const int from, const int to, const int flags)
 	}
 	else
 	{
-		game_list[hply+1].streak = m->streak + 1;
+		game_list[hply + 1].streak = m->streak + 1;
 	}
 	ply++;
 	hply++;
 	side ^= 1;
 	xside ^= 1;
-	
-//*
+
+#if DEBUG
 	if (LineAttack(side, kingloc[xside]))
 	{
 		printf(" line ");
@@ -480,7 +487,7 @@ bool MakeQuietMove(const int from, const int to, const int flags)
 		z();
 		LineAttack(side, kingloc[xside]);
 		UnMakeQuietMove();
-			return false;
+		return false;
 	}
 	if (Attack(side, kingloc[xside]))
 	{
@@ -489,7 +496,7 @@ bool MakeQuietMove(const int from, const int to, const int flags)
 		UnMakeQuietMove();
 		return false;
 	}
-//*/
+#endif
 	return true;
 }
 
@@ -503,14 +510,16 @@ void UnMakeQuietMove()
 	castle = m->castle;
 	fifty = m->fifty;
 
-	UpdatePiece(side, b[m->to], m->to, m->from);
+	const int from = m->from;
+	const int to = m->to;
 
-	if(m->flags & CASTLE)
+	UpdatePiece(side, b[to], to, from);
+
+	if (m->flags & CASTLE)
 	{
-		int from, to;
-		to = castle_start[m->to];
-		from = castle_dest[m->to];
-		UpdatePiece(side, ROOK, from, to);
+		const int to2 = castle_start[to];
+		const int from2 = castle_dest[to];
+		UpdatePiece(side, R, from2, to2);
 		KingScore[side][squares[side][E1]] = 10;
 		if (col[to] == 7)
 		{
