@@ -1,4 +1,4 @@
-// gen_magics.cpp — Generate rook/bishop magic numbers (VS2019 friendly, no C++20).
+// gen_magics.cpp â€” Generate rook/bishop magic numbers (VS2019 friendly, no C++20).
 // Build: x64, /O2 recommended. Prints rookMagics[64], bishopMagics[64], RBits[64], BBits[64].
 // Square mapping assumed: a1=0, b1=1, ..., h8=63 (little-endian ranks).
 
@@ -119,7 +119,7 @@ U64 bishop_mask(int sq) {
     return m;
 }
 
-// OTF attacks (truth) — used only to build table
+// OTF attacks (truth) â€” used only to build table
 U64 rook_attacks_otf(int sq, U64 occ) {
     U64 a = 0ULL; int r = rank_of(sq), f = file_of(sq);
     for (int rr = r + 1; rr <= 7; ++rr) { U64 b = 1ULL << sq_of(rr, f); a |= b; if (occ & b) break; }
@@ -210,7 +210,7 @@ void InitMagicAttacks()
     if (bishopOffset > 64 * 512) std::printf("ERROR: bishopAttTable too small (%d)\n", bishopOffset);
 }
 
-U64 RookAttacks(int sq, U64 occ)
+U64 MagicRookAttacks(int sq, U64 occ)
 {
     const MagicEntry& m = rookMag[sq];
     occ &= m.mask;
@@ -218,7 +218,7 @@ U64 RookAttacks(int sq, U64 occ)
     return rookAttTable[m.offset + (int)idx];
 }
 
-U64 BishopAttacks(int sq, U64 occ)
+U64 MagicBishopAttacks(int sq, U64 occ)
 {
     const MagicEntry& m = bishopMag[sq];
     occ &= m.mask;
@@ -226,9 +226,9 @@ U64 BishopAttacks(int sq, U64 occ)
     return bishopAttTable[m.offset + (int)idx];
 }
 
-U64 QueenAttacks(int sq, U64 occ)
+U64 MagicQueenAttacks(int sq, U64 occ)
 {
-    return RookAttacks(sq, occ) | BishopAttacks(sq, occ);
+    return MagicRookAttacks(sq, occ) | MagicBishopAttacks(sq, occ);
 }
 
 void TestQueenAttacks()
@@ -241,8 +241,17 @@ void TestQueenAttacks()
         {
             U64 occ = ((U64)rand() << 32) ^ (U64)rand();
             // Optional: often you want occ to include all pieces, including the queen square doesn't matter.
-            U64 q1 = QueenAttacks(sq, occ);       // your fast one
+            U64 q1 = MagicQueenAttacks(sq, occ);       // your fast one
             U64 q2 = 0;
+
+            if (sq == 27 && t == 500)
+            {
+                memset(pawn_mat, 0, sizeof(pawn_mat));
+                memset(piece_mat, 0, sizeof(piece_mat));
+                memset(bit_pieces, 0, sizeof(bit_pieces));
+                memset(bit_units, 0, sizeof(bit_units));
+                bit_all = 0;
+            }
             //
             bit_all = occ;
             b2 = bit_queenmoves[sq];
@@ -272,7 +281,7 @@ void TestQueenAttacks()
             //*/
         }
     }
-    printf("QueenAttacks OK\n");
+    printf("MagicQueenAttacks OK\n");
 }
 
 
