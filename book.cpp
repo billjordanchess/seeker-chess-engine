@@ -56,7 +56,8 @@ int Book()
 
 	int from, to, match, m = 0;
 	int matches[100][2];
-	int y, colour;
+	int colour;
+	int y;
 
 	for (int x = 0; x < total2; x++)
 	{
