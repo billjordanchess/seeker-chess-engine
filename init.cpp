@@ -1,9 +1,9 @@
 #include "globals.h"
 
-constexpr int  WHITE_KING_CASTLE = 1;
-constexpr int  WHITE_QUEEN_CASTLE = 2;
-constexpr int  BLACK_KING_CASTLE = 4;
-constexpr int  BLACK_QUEEN_CASTLE = 8;
+constexpr int WHITE_KING_CASTLE = 1;
+constexpr int WHITE_QUEEN_CASTLE = 2;
+constexpr int BLACK_KING_CASTLE = 4;
+constexpr int BLACK_QUEEN_CASTLE = 8;
 
 int b[64];
 int side;
@@ -44,11 +44,6 @@ int castle_mask[64] = {
 	15, 15, 15, 15, 15, 15, 15, 15,
 	7, 15, 15, 15,  3, 15, 15, 11
 };
-/*
-char piece_char[7] = {
-	'P', 'N', 'B', 'R', 'Q', 'K', 'X'
-};
-*/
 
 enum Zone { QS = 0, CEN = 1, KS = 2 };
 
@@ -90,17 +85,10 @@ int PawnBlocked[2][64];
 
 void SetKnightMoves();
 void SetKingMoves();
-void SetLineMoves();
 
 void PrecomputeShieldLUTs(int);
 
-//eval.cpp
-int KingPawn[2][64];
-int pawn_eval[2][MAX_PLY];
-int king_pawn[2][2][512];
-int captures[MAX_PLY];
 int Threat[MAX_PLY];
-int KingEval[2][MAX_PLY];
 
 int passed[2][64];
 int adjacent_passed[2][64];
@@ -230,28 +218,6 @@ int Flip[64] = {
 	  0,   1,   2,   3,   4,   5,   6,   7
 };
 
-int knight_total[64] = {
-   2, 3,  4,  4, 4,  4, 3, 2,
-   3, 4,  6,  6, 6,  6, 4, 3,
-   4, 6,  8,  8, 8,  8, 6, 4,
-   4, 6,  8,  8, 8,  8, 6, 4,
-   4, 6,  8,  8, 8,  8, 6, 4,
-   4, 6,  8,  8, 8,  8, 6, 4,
-   3, 4,  6,  6, 6,  6, 4, 3,
-   2, 3,  4,  4, 4,  4, 3, 2
-};
-
-int king_total[64] = {
-   3, 5,  5,  5, 5,  5, 5, 3,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   5, 8,  8,  8, 8,  8, 8, 5,
-   3, 5,  5,  5, 5,  5, 5, 3
-};
-
 int pawn_blocked[64] = {
 	0, 0,  0,  0, 0,  0, 0, 0,
 	0, 0,  0,  0, 0,  0, 0, 0,
@@ -277,8 +243,8 @@ int isolated[64] =
 
 int king_zone[2][64] = {
 	{
-	0, 0, 0, 2, 2, 1, 1, 1,
-	0, 0, 0, 2, 2, 1, 1, 1,
+	0, 0, 0, 2, 2, 2, 1, 1,
+	0, 0, 2, 2, 2, 2, 1, 1,
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
@@ -293,8 +259,8 @@ int king_zone[2][64] = {
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
-	0, 0, 0, 2, 2, 1, 1, 1,
-	0, 0, 0, 2, 2, 1, 1, 1
+	0, 0, 2, 2, 2, 1, 1, 1,
+	0, 0, 0, 2, 2, 2, 1, 1
 	}
 };
 
@@ -303,12 +269,6 @@ int pawn_mat[2];
 int kingloc[2];
 
 int PieceScore[2][6][64];
-
-int PawnScore[2][64];
-int KnightScore[2][64];
-int BishopScore[2][64];
-int RookScore[2][64];
-int QueenScore[2][64];
 int KingScore[2][64];
 
 int a_nodes;
@@ -331,9 +291,6 @@ void FreeAllHash();
 
 void SetUp()
 {
-	SetKnightMoves();
-	SetKingMoves();
-	SetLineMoves();
 	SetBits();
 	SetScores();
 	SetKingPawnTable();
@@ -362,16 +319,18 @@ void StartGame()
 
 void NewPosition()
 {
-	piece_mat[0] = pawn_mat[0] = table_score[0] = 0;
-	piece_mat[1] = pawn_mat[1] = table_score[1] = 0;
+	memset(piece_mat, 0, sizeof(piece_mat));
+	memset(pawn_mat, 0, sizeof(pawn_mat));
+	memset(table_score, 0, sizeof(table_score));
 
-	kingside[0] = queenside[0] = 0;
-	kingside[1] = queenside[1] = 0;
-	kingattack[0] = queenattack[0] = 0;
-	kingattack[1] = queenattack[1] = 0;
+	memset(kingside, 0, sizeof(kingside));
+	memset(queenside, 0, sizeof(queenside));
+	memset(kingattack, 0, sizeof(kingattack));
+	memset(queenattack, 0, sizeof(queenattack));
 
 	memset(bit_pieces, 0, sizeof(bit_pieces));
-	bit_units[0] = bit_units[1] = 0;
+	memset(bit_units, 0, sizeof(bit_units));
+
 	bit_all = 0;
 
 	memset(total, 0, sizeof(total));
@@ -579,12 +538,11 @@ void SetKingPawnTable()
 void SetFromTo()
 {
 	for (int s = 0; s < 2; s++)
-		for (int p = 0; p < 6; p++)
+		for (int piece = 0; piece < 6; piece++)
 			for (int x = 0; x < 64; x++)
 			{
-				hist_from[s][p][x] = -PieceScore[s][p][x];
-				hist_to[s][p][x] = PieceScore[s][p][x];
+				hist_from[s][piece][x] = -PieceScore[s][piece][x];
+				hist_to[s][piece][x] = PieceScore[s][piece][x];
 			}
 }
-
 
