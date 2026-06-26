@@ -17,22 +17,22 @@ constexpr int CASTLE_WQ = 2;
 constexpr int CASTLE_BK = 4;
 constexpr int CASTLE_BQ = 8;
 
-extern unsigned int CAPTURE;
-extern unsigned int INCHECK;
-extern unsigned int ATTACK;
-extern unsigned int CASTLE;
-extern unsigned int QUIET;
-extern unsigned int KILLER;
-extern unsigned int PASSED6;
-extern unsigned int PASSED7;
-extern unsigned int PROMOTE;
-extern unsigned int CHECK;
-extern unsigned int DEFEND;
-extern unsigned int PAWNMOVE;
-extern unsigned int COUNTER;
-extern unsigned int EP;
-extern unsigned int MATETHREAT;
-extern unsigned int DISCO;
+constexpr unsigned int CAPTURE = (1u << 0);
+constexpr unsigned int CHECK = (1u << 1);
+constexpr unsigned int INCHECK = (1u << 2);
+constexpr unsigned int PROMOTE = (1u << 3);
+constexpr unsigned int ATTACK = (1u << 4);
+constexpr unsigned int KILLER = (1u << 5);
+constexpr unsigned int PASSED6 = (1u << 6);
+constexpr unsigned int PASSED7 = (1u << 7);
+constexpr unsigned int MATETHREAT = (1u << 8);
+constexpr unsigned int CASTLE = (1u << 9);
+constexpr unsigned int COUNTER = (1u << 10);
+constexpr unsigned int DEFEND = (1u << 11);
+constexpr unsigned int PAWNMOVE = (1u << 12);
+constexpr unsigned int EP = (1u << 13);
+constexpr unsigned int DISCO = (1u << 14);
+constexpr unsigned int QUIET = (1u << 15);
 
 enum {
 	A1, B1, C1, D1, E1, F1, G1, H1,
@@ -433,7 +433,7 @@ extern int total[2][6];
 
 extern int table_score[2];
 
-extern int piece_value[6];
+extern int piece_value[7];
 extern int done[1000];
 
 extern int passed[2][64];
@@ -518,14 +518,16 @@ void z();
 
 int CountBits(BITBOARD b1);
 
+void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(&bit_check)[6]);
 void GenQuietCaptures(const int s, const int xs, const int diff, BITBOARD pin_mask, BITBOARD bit_xpinned);
-void GenQuietMoves(const int s, const int xs, const BITBOARD not_captured, BITBOARD pin_mask, const BITBOARD* bit_cs);
 
 bool Attack(const int s, const int sq);
 bool CheckAttack(const int s, const int sq);
 bool LineAttack(const int s, const int sq);
 
 void UpdatePawn(const int s, const int from, const int to);
+void RemovePawn(const int s, const int sq);
+void AddPawn(const int s, const int sq);
 void UpdatePiece(const int s, const int p, const int from, const int to);
 void RemovePiece(const int s, const int p, const int sq);
 void AddPiece(const int s, const int p, const int sq);
@@ -534,7 +536,7 @@ void NewPosition();
 
 void SetKingPawnTable();
 
-int LookUp2(const int s);
+bool LookUp2(const int s);
 
 int LookUp(const int side, const int depth, const int alpha, const int beta);
 
@@ -547,7 +549,7 @@ void UnMakeRecapture();
 int BlockedPawns(const int s, const int x);
 int SafeKingMoves(const int, const int);
 
-bool BestThreat(const int s, const int xs, const int diff);
+bool IsThreat(const int s, const int xs, const int diff);
 
 extern int scale[200];
 extern int h_check[64][64];
@@ -637,9 +639,9 @@ bool IsOneBit(BITBOARD x);
 int NextHighBit(BITBOARD bb);
 
 //magics
-U64 BishopAttacks(int sq, U64 occ);
-U64 RookAttacks(int sq, U64 occ);
-U64 QueenAttacks(int sq, U64 occ);
+U64 MagicBishopAttacks(int sq, U64 occ);
+U64 MagicRookAttacks(int sq, U64 occ);
+U64 MagicQueenAttacks(int sq, U64 occ);
 
 bool IsCheck(const int p, const int sq, const int king);
 
