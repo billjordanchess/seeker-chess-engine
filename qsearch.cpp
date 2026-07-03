@@ -21,7 +21,7 @@ int GetTarget(const int s, const int xs);
 
 int Sort(const int from, const int, const int);
 void SelectCapture(const int from, const int last);
-int RecaptureSearch(int s, const int attacker, const int sq, BITBOARD p1, BITBOARD p2, const int, const int, const int, const int);
+int RecaptureSearch(int s, const int attacker, const int, const int sq, BITBOARD p1, BITBOARD p2, const int, const int, const int, const int);
 
 int check_history[6][64];
 
@@ -91,6 +91,9 @@ int QuietEvasion(int alpha, int beta, BITBOARD pin_mask)
 	int score;
 	int flags;
 
+	///if (b[E1] == 4)
+	//	z();
+
 	for (int i = start; i < end; i++)
 	{
 		top = Sort(i, top, end);
@@ -101,8 +104,7 @@ int QuietEvasion(int alpha, int beta, BITBOARD pin_mask)
 		{
 			continue;
 		}
-		//if (to == C7)
-		//	z();
+
 		count++;
 		score = -CaptureSearch(-beta, -alpha);
 		UnMakeCapture();
@@ -189,9 +191,6 @@ int CaptureSearch(int alpha, const int beta)
 		xpin_mask = GetPinMask(xside, side);
 	}
 
-	//if (b[A5] == 2)
-	//	z();
-
 	int diff = 0;
 
 	if (alpha > -10000)
@@ -256,40 +255,7 @@ int CaptureSearch(int alpha, const int beta)
 		}
 		else
 		{
-			/*
-			int attack_sq;
-			if ((pin_mask & bit_units[side]) == 0)
-			{
-				attack_sq = GetNextAttackerSquare(side, xside, to, bit_all & ~mask[from]);
-			}
-			else
-			{
-				attack_sq = GetNextAttackerSquarePins(side, xside, to, bit_all & ~mask[from], pin_mask);
-			}
-			if (attack_sq == -1)
-			{
-				if (piece_value[b[from]] > piece_value[b[to]])
-					continue;
-
-					if (!MakeCapture(from, to, flags))
-		continue;
-
-	if (!MakeCapture(defender_sq, to, 0))
-	//if (Attack(side, kingloc[xside]))
-	{
-		//UnMakeCapture();
-		//continue;
-	}
-
-				score = Eval(side, xside, alpha, beta);
-				UnMakeCapture();
-				UnMakeCapture();
-			}
-			else
-			//*/
-			{
-				score = RecaptureSearch(side, from, to, pin_mask, xpin_mask, eval, alpha, beta, flags);
-			}
+			score = RecaptureSearch(side, from, to, defender_sq, pin_mask, xpin_mask, eval, alpha, beta, flags);
 		}
 
 		if (ply > deep)
@@ -489,56 +455,47 @@ int SafeKingMoves(const int s, const int xs)
 	return 0;
 }
 
-int RecaptureSearch(int s, const int attacker, const int sq,
+int RecaptureSearch(int s, const int attacker, const int sq, const int defender,
 	const BITBOARD p1, const BITBOARD p2,
 	const int eval, const int alpha, const int beta, const int flags)
 {
 	const int start_side = side;
 
 	int attack_sq = attacker;
-	int list[12];
-	int gain[12];
+	int value[16];
 	int count = 0;
+	//int flag = 0;//
 
-	memset(list, -1, sizeof(list));
-	memset(gain, 0, sizeof(gain));
+	memset(value, 0, sizeof(value));
 
 	BITBOARD bit_occ = bit_all;
 	BITBOARD pins[2];
 
-	list[0] = attacker;
-	gain[0] = piece_value[b[sq]];
+	value[0] = piece_value[b[sq]];
+	value[1] = piece_value[b[attacker]];
+	value[2] = piece_value[b[defender]];
 
 	pins[0] = p1;
 	pins[1] = p2;
 
-	int captured_value = piece_value[b[attacker]];
 	if (b[attacker] == P && row2[s][sq] == 7)
-		captured_value = 800;
+	{
+		value[0] = 800;
+		value[1] = 900;
+		value[2] = piece_value[defender];
+	}
 
-	//if (b[C7] == Q && b[C3] == 6)
-	//	z();
+	bit_occ &= not_mask[attacker];
+	attack_sq = defender;
+	s ^= 1;
+	count = 2;
 
-	while (count < 10)
+//	if (b[E5] == 1 && sq==E5)
+//		z();
+
+	while (count < 12)
 	{
 		bit_occ &= not_mask[attack_sq];
-		/*
-		if (LineAttack2(s^1, kingloc[s], bit_occ | mask[sq]))
-		{
-			if (bit_kingmoves[kingloc[s]] & mask[sq])
-			{
-				if (GetNextAttackerSquare(s^1, s, sq, bit_occ) == -1)
-				{
-					count++;
-					list[count] = kingloc[s];
-					gain[count] = captured_value - gain[count - 1];
-				}
-			}
-			z();
-			break;
-		}
-		*/
-
 		s ^= 1;
 
 		if (pins[s] & bit_units[s])
@@ -548,72 +505,68 @@ int RecaptureSearch(int s, const int attacker, const int sq,
 
 		if (attack_sq == -1)
 		{
+			if (count > 2 && value[count] > value[count - 1])
+			{
+				//flag = 1;
+				count -= 3;
+				break;
+			}
+			count--;
 			break;
 		}
-
-		count++;
-		list[count] = attack_sq;
-		gain[count] = captured_value - gain[count - 1];
-		captured_value = piece_value[b[attack_sq]];
-	}
-
-	const int total_count = count;
-
-	while (count > 0)
-	{
-		gain[count - 1] = -Max(-gain[count - 1], gain[count]);
-		count--;
-	}
-
-	int depth = 0;
-
-	while (depth < total_count && gain[depth] > 0)
-	{
-		depth++;
-	}
-	if (depth == 0)
-		return alpha;
-
-//	if (b[B2] == 6 && list[0] == 0)
-//		z();
-
-	MakeCapture(list[0], sq, flags);
-
-	//for (int x = 1; x < depth; x++)
-	for (int x = 1; x < depth; x++)//??
-	{
-		MakeRecapture(list[x], sq);
-	}
-
-	if (Attack(xside, kingloc[side]))
-	{
-		int check = Check(xside, kingloc[side]);
-		if (IsMate(check))
+		if (b[attack_sq] == K)
 		{
-			for (int x = 1; x < depth; x++)
+			if (value[count] > value[count - 1])
 			{
-				UnMakeRecapture();
+				count -= 2;
+				break;
 			}
-			UnMakeCapture();
-
-			if (side == start_side)
-				return ply - 10000;
-			else
-				return 10000 - ply;
+			count++;
+			break;
 		}
+		if (value[count] > value[count - 1] + piece_value[b[attack_sq]])
+		{
+			count -= 2;
+			break;
+		}
+		count++;
+		value[count] = piece_value[b[attack_sq]];
 	}
 
-	int ev = eval;
-	if (side == start_side)
-		ev = Eval(side, xside, alpha, beta);
-	else
-		ev = -Eval(side, xside, -beta, -alpha);
+	int score = value[0];
 
-	for (int x = 1; x < depth; x++)//??
+	for (int x = 1; x <= count; x++)
 	{
-		UnMakeRecapture();
+		if (x % 2 == 0)
+			score += value[x];
+		else
+			score -= value[x];
 	}
-	UnMakeCapture();
+	/*
+	if (flag==1)
+	{
+		Alg(attacker, sq); printf(" ");
+		printf("score %d ", score);
+		z();
+	}
+	*/
 
-	return ev;
+	return eval + score;
 }
+
+/*
+	if (LineAttack2(s^1, kingloc[s], bit_occ | mask[sq]))
+	{
+		if (bit_kingmoves[kingloc[s]] & mask[sq])
+		{
+			if (GetNextAttackerSquare(s^1, s, sq, bit_occ) == -1)
+			{
+				count++;
+				list[count] = kingloc[s];
+				gain[count] = captured_value - gain[count - 1];
+			}
+		}
+		z();
+		break;
+	}
+	*/
