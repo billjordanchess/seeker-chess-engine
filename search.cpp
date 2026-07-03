@@ -117,7 +117,7 @@ int currentdepth;
 int currentmax;
 
 int frontier[8] = { 0,0,8,20,10,20,0 };
-int piece_value[7] = { 100, 300, 300, 500, 900, 0, 800};
+int piece_value[6] = { 100, 300, 300, 500, 900, 0};
 
 int stats_depth[20];
 int stats_count[100];
@@ -533,6 +533,9 @@ int RootSearch(int depth, int alpha, int beta, const int prevScore)
 		int from = move_list[i].from;
 		int to = move_list[i].to;
 		unsigned int flags = move_list[i].flags;
+
+		if (from == F4 && to == C7)
+			to=to;
 
 		if (!MakeMove(from, to, flags))
 			continue;
