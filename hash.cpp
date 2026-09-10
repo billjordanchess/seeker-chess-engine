@@ -170,9 +170,6 @@ void AddHash(const int s, int depth, int score, const int type,
 
 	const int oldDepth = (int)ptr->depth;
 
-	//if (occupied && depth < oldDepth && type != EXACT)
-	//	return;
-
 	if (occupied)
 	{
 		if (old_lock == (U64)currentkey)
@@ -188,10 +185,8 @@ void AddHash(const int s, int depth, int score, const int type,
 				return;
 		}
 	}
-	//
 
 	ptr->hashlock = (U64)currentkey;   
-
 	ptr->score = (short)score;
 	ptr->depth = (unsigned char)depth;
 	ptr->type = (unsigned char)type;
