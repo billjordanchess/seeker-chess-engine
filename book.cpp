@@ -96,7 +96,6 @@ int Book()
 			matches[m][1] = to;
 			m++;
 		}
-
 	}
 
 	if (m == 0)
