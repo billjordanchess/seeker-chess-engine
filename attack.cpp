@@ -338,8 +338,6 @@ void BuildAttackMap()
 			(bit_weaker[1][R] & bit_pieces[0][R]) | (bit_weaker[1][Q] & bit_pieces[0][Q]);
 		bit_total_weaker[1] = (bit_weaker[0][N] & bit_pieces[1][N]) | (bit_weaker[0][B] & bit_pieces[1][B]) |
 			(bit_weaker[0][R] & bit_pieces[1][R]) | (bit_weaker[0][Q] & bit_pieces[1][Q]);
-		//PrintBitBoard(bit_total_weaker[0]);
-		//z();
 
 	for (int s = 0; s < 2; s++)//what defends a move
 	{
