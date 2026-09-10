@@ -58,18 +58,15 @@ int pawn_difference[64][64];
 int row2[2][64];
 int lastsquare[2][64];
 
-//extend.cpp
 int extend[MAX_PLY];
 int PlyMove[MAX_PLY];
 int PlyType[MAX_PLY];
 
-//board.cpp
 int done[1000];
 
 int pieces[2][6][10];
 int total[2][6];
 
-//moves.cpp
 int table_score[2];
 int kingside[2];
 int queenside[2];
@@ -92,7 +89,7 @@ int castle_dest[64];
 
 int pawn_score[64] = {
 	  0,   0,   0,   0,   0,   0,   0,   0,
-	  0,   2,   4,   0,   0,   5,   2,   0,//d2/e2 -8 to -6 24/7/26 -4
+	  0,   2,   4,   0,   0,   5,   2,   0,
 	  0,   2,   4,   4,   4,   3,   2,   0,
 	  0,   2,   4,   8,   8,   4,   2,   0,
 	  0,   2,   4,   8,   8,   4,   2,   0,
