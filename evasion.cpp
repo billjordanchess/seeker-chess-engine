@@ -160,8 +160,6 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 	
 	if (checker == DOUBLE_CHECK)
 	{
-		//Algebraic(checker);
-		//z();
 		return;
 	}
 
@@ -236,9 +234,7 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 			int to = NextBit(b2);
 			b2 &= b2 - 1;
 			if (!(bit_between[from][to] & bit_all))
-			{
-				//10 148 25 133014 
-				//10 148 25 132922 
+			{ 
 				if (Attack2(s, to, bit_all & ~mask[from], ~mask[from]) == 0 ||
 					bit_pawndefends[xs][to] & bit_pieces[xs][P])
 				{
