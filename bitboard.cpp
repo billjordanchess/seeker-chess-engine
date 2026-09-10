@@ -596,12 +596,6 @@ void SetMaskPawns()
 	}
 	for (int x = 0; x < 64; ++x)
 	{
-		//Algebraic(x);
-		//PrintBitBoard(mask_squarepawn[1][0][x]);
-		//_getch();
-	}
-	for (int x = 0; x < 64; ++x)
-	{
 		for (int y = 0; y < 64; y++)
 		{
 			if (abs(col[x] - col[y]) < 2)
