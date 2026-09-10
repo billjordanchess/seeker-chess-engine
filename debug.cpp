@@ -27,78 +27,12 @@ void Alg2(int a, int b)
 	Algebraic(b);
 }
 
-void Algebraic(int a)
+void Algebraic(int sq)
 {
-	switch (a)
-	{
-	case A1: printf("a1"); break;
-	case B1: printf("b1"); break;
-	case C1: printf("c1"); break;
-	case D1: printf("d1"); break;
-	case E1: printf("e1"); break;
-	case F1: printf("f1"); break;
-	case G1: printf("g1"); break;
-	case H1: printf("h1"); break;
-	case A2: printf("a2"); break;
-	case B2: printf("b2"); break;
-	case C2: printf("c2"); break;
-	case D2: printf("d2"); break;
-	case E2: printf("e2"); break;
-	case F2: printf("f2"); break;
-	case G2: printf("g2"); break;
-	case H2: printf("h2"); break;
-	case A3: printf("a3"); break;
-	case B3: printf("b3"); break;
-	case C3: printf("c3"); break;
-	case D3: printf("d3"); break;
-	case E3: printf("e3"); break;
-	case F3: printf("f3"); break;
-	case G3: printf("g3"); break;
-	case H3: printf("h3"); break;
-	case A4: printf("a4"); break;
-	case B4: printf("b4"); break;
-	case C4: printf("c4"); break;
-	case D4: printf("d4"); break;
-	case E4: printf("e4"); break;
-	case F4: printf("f4"); break;
-	case G4: printf("g4"); break;
-	case H4: printf("h4"); break;
-	case A5: printf("a5"); break;
-	case B5: printf("b5"); break;
-	case C5: printf("c5"); break;
-	case D5: printf("d5"); break;
-	case E5: printf("e5"); break;
-	case F5: printf("f5"); break;
-	case G5: printf("g5"); break;
-	case H5: printf("h5"); break;
-	case A6: printf("a6"); break;
-	case B6: printf("b6"); break;
-	case C6: printf("c6"); break;
-	case D6: printf("d6"); break;
-	case E6: printf("e6"); break;
-	case F6: printf("f6"); break;
-	case G6: printf("g6"); break;
-	case H6: printf("h6"); break;
-	case A7: printf("a7"); break;
-	case B7: printf("b7"); break;
-	case C7: printf("c7"); break;
-	case D7: printf("d7"); break;
-	case E7: printf("e7"); break;
-	case F7: printf("f7"); break;
-	case G7: printf("g7"); break;
-	case H7: printf("h7"); break;
-	case A8: printf("a8"); break;
-	case B8: printf("b8"); break;
-	case C8: printf("c8"); break;
-	case D8: printf("d8"); break;
-	case E8: printf("e8"); break;
-	case F8: printf("f8"); break;
-	case G8: printf("g8"); break;
-	case H8: printf("h8"); break;
-	default:
-		printf("-1"); break;
-	}
-
+	char file = 'a' + (sq & 7);
+	char rank = '1' + (sq >> 3);
+	printf("%c%c", file, rank);
+	//std::cout << file << row[rank] + 1;
 }
 
 void ShowAll2()
@@ -112,7 +46,7 @@ void ShowAll2()
 	printf(" ply %d", ply);
 	printf(" current max %d", currentmax);
 	printf(" currentdepth %d ", GetCurrentDepth());
-	printf(" nodes %d ", nodes);
+	printf(" nodes %lld ", nodes);
 	printf(" side %d", side);
 	printf(" xside %d\n", xside);
 
@@ -190,7 +124,7 @@ void ShowAll(int ply)
 	printf("%d", currentmax);
 	printf(" currentdepth %d", GetCurrentDepth());
 	printf(" nodes ");
-	printf("%d", nodes);
+	printf("%lld", nodes);
 	printf(" side ");
 	printf("%d", side);
 	printf(" xside ");
@@ -470,13 +404,13 @@ void ShowAllEval(int ply)
 	printf("%d", currentmax);
 	printf(" currentdepth %d", GetCurrentDepth());
 	printf(" nodes ");
-	printf("%d", nodes);
+	printf("%lld", nodes);
 	printf(" side ");
 	printf("%d", side);
 	printf(" xside ");
 	printf("%d", xside);
 	printf("\n");
-	
+
 	printf("\n");
 
 	int j;
@@ -485,12 +419,9 @@ void ShowAllEval(int ply)
 
 	for (int i = first_move[ply]; i < first_move[ply + 1]; i++)
 	{
-		if (MakeMove(move_list[i].from, move_list[i].to, move_list[i].flags))
-		{
-			//move_list[i].score = QuietSearch(-10000, 10000, 0);
+		MakeMove(move_list[i].from, move_list[i].to, move_list[i].flags);
 			move_list[i].score = -Eval(-10000, 10000);
 			UnMakeMove();
-		}
 	}
 	for (int i = first_move[ply]; i < first_move[ply + 1]; i++)
 	{
@@ -508,7 +439,3 @@ void ShowAllEval(int ply)
 	_getch();
 }
 
-//masks for ranks/file by square? unused
-/*
-
-*/

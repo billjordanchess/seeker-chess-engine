@@ -1,6 +1,4 @@
-// gen_magics.cpp — Generate rook/bishop magic numbers (VS2019 friendly, no C++20).
-// Build: x64, /O2 recommended. Prints rookMagics[64], bishopMagics[64], RBits[64], BBits[64].
-// Square mapping assumed: a1=0, b1=1, ..., h8=63 (little-endian ranks).
+//11/9/26
 
 #include <cstdint>
 #include <cstdio>
@@ -11,8 +9,6 @@
 #include <algorithm>
 
 #include "globals.h"
-
-//typedef unsigned long long U64;
 
 void TestQueenAttacks();
 
@@ -97,9 +93,9 @@ U64 rookAttTable[64 * 4096];
 U64 bishopAttTable[64 * 512];
 
 // Your helper functions (must exist in engine):
-static inline int file_of(int sq) { return sq & 7; }
-static inline int rank_of(int sq) { return sq >> 3; }
-static inline int sq_of(int r, int f) { return (r << 3) | f; }
+int file_of(int sq) { return sq & 7; }
+int rank_of(int sq) { return sq >> 3; }
+int sq_of(int r, int f) { return (r << 3) | f; }
 
 // Masks excluding edges (same as generator)
 U64 rook_mask(int sq) {
@@ -119,7 +115,7 @@ U64 bishop_mask(int sq) {
     return m;
 }
 
-// OTF attacks (truth) — used only to build table
+// OTF attacks (truth) � used only to build table
 U64 rook_attacks_otf(int sq, U64 occ) {
     U64 a = 0ULL; int r = rank_of(sq), f = file_of(sq);
     for (int rr = r + 1; rr <= 7; ++rr) { U64 b = 1ULL << sq_of(rr, f); a |= b; if (occ & b) break; }
@@ -254,7 +250,7 @@ void TestQueenAttacks()
             }
             //
             bit_all = occ;
-            b2 = bit_queenmoves[sq];
+            b2 = bit_moves[Q][sq];
             b3 = b2 & bit_all;
             while (b3)
             {

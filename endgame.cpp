@@ -1,15 +1,10 @@
+//11/9/26
 #include "globals.h"
 
-constexpr int  HALFKENDMOB = 4;
+constexpr int RANK_6 = 5;
+constexpr int RANK_7 = 6;
 
-constexpr int  DRAWPLUS = 1;
-constexpr int  DRAWMINUS = -1;
-constexpr int  ROOKBEHIND = 15;
-
-constexpr int  RANK_6 = 5;
-constexpr int  RANK_7 = 6;
-
-constexpr int  QUEENING = 650;
+constexpr int QUEENING = 650;
 
 constexpr int rookmoves[15] = { -5,1,2,3,4,5,6,7,8,9,10,11,12,13,14 };
 
@@ -18,7 +13,6 @@ int endmatrix[10][3][10][3];
 
 int EvalPawns(const int s, const int xs);
 int EvalPawn(const int s, const int xs, const int sq, const BITBOARD pawn_s, const BITBOARD pawn_xs);
-//int MoveCount(const int sq, const BITBOARD squares, const BITBOARD denied_squares);
 
 int PawnEndingScore(const int s, const int xs);
 int PawnRace(const int s, const int, const int p);
@@ -32,11 +26,8 @@ int PiecesPassedPawnScore(const int s, const int xs, const int king, const int x
 int OppositeBishops();
 
 int DrawnEnding(const int, const int);
-int KingVersusPawns(const int s, const int xs, const int);
-
-bool RookBehind(const int s, const int from, const int to);
-
-int GetDistance(const int xs, const int x, const int king);
+int KingVersusPawns(const int s, const int xs);
+int SafeKingMoves(const int, const int);
 
 int EvalPawnless(const int, const int);
 
@@ -45,6 +36,8 @@ int EvalEndgame(const int s, const int xs)
 	int score[2];
 	score[0] = pawn_mat[0] + piece_mat[0] + table_score[0] + king_endgame_score[kingloc[0]];
 	score[1] = pawn_mat[1] + piece_mat[1] + table_score[1] + king_endgame_score[kingloc[1]];
+
+	BlockedPawns(s, xs);//
 
 	hashpawn& pawn_eval = LookUpPawn();
 
@@ -86,35 +79,33 @@ int EvalEndgame(const int s, const int xs)
 		int from = NextBit(b1);
 		b1 &= b1 - 1;
 		int to = pawnplus[s][from];
-		if (b[to] == EMPTY && !Attack(xs, to) && !(RookBehind(xs, from, to)))
+		if (b[to] == EMPTY && !Attack(xs, to, bit_all & ~mask[from]))
 		{
 			score[s] += 800;
 			return score[s] - score[xs];
 		}
 	}
-
 	if (piece_mat[0] == 0 && piece_mat[1] == 0)
 	{
 		if (pawn_mat[0] == 0 && pawn_mat[1] > 0)
 		{
-			return KingVersusPawns(0, 1, s);
+			return KingVersusPawns(0, 1) - score[1];
 		}
 		else if (pawn_mat[1] == 0 && pawn_mat[0] > 0)
 		{
-			return KingVersusPawns(1, 0, s);
+			return KingVersusPawns(1, 0) - score[0];
 		}
 		score[s] += PawnEndingScore(s, xs);
-		score[0] += PawnPositional(s, xs);
-		score[1] += PawnPositional(xs, s);
+		score[s] += PawnPositional(s, xs);
+		score[xs] += PawnPositional(xs, s);
 		score[0] += pawn_mat[0] / 2;//24
 		score[1] += pawn_mat[1] / 2;//24
 			//King attack pawn
 		for (int x = 0; x < 2; x++)
-			if (bit_kingmoves[kingloc[x]] & bit_pieces[x ^ 1][P] & ~(bit_pawnattacks[x ^ 1]))
+			if (bit_moves[K][kingloc[x]] & bit_pieces[x ^ 1][P] & ~(bit_pawnattacks[x ^ 1]))
 			{
 				score[x] += 25;
 			}
-
 		return score[s] - score[xs];
 	}
 	//static score
@@ -124,7 +115,7 @@ int EvalEndgame(const int s, const int xs)
 	if (pawn_mat[0] > 0 && piece_mat[0] > 0 &&
 		piece_mat[0] + pawn_mat[0] > piece_mat[1] + pawn_mat[1])
 	{
-		if (mask_abc & bit_pieces[0][P] && mask_def & bit_pieces[0][P])
+		if (mask_abc & bit_pieces[0][P] && mask_ghi & bit_pieces[0][P])
 		{
 			score[0] += 10;
 		}
@@ -132,7 +123,7 @@ int EvalEndgame(const int s, const int xs)
 	else if (pawn_mat[1] > 0 && piece_mat[1] > 0 &&
 		piece_mat[1] + pawn_mat[1] > piece_mat[0] + pawn_mat[0])
 	{
-		if (mask_abc & bit_pieces[1][P] && mask_def & bit_pieces[1][P])
+		if (mask_abc & bit_pieces[1][P] && mask_ghi & bit_pieces[1][P])
 		{
 			score[1] += 10;
 		}
@@ -157,7 +148,6 @@ int EvalEndgame(const int s, const int xs)
 			{
 				return 0;
 			}
-
 		}
 	}
 	for (int s = 0; s < 2; s++)
@@ -170,41 +160,10 @@ int EvalEndgame(const int s, const int xs)
 		for (int x = 0; x < total[s][R]; x++)
 		{
 			int sq = pieces[s][R][x];
-			score[s] += rookmoves[CountBits(MagicRookAttacks(sq, bit_all) & bit_pawnattacks[!s])];
+			score[s] += rookmoves[CountBits(MagicRookAttacks(sq, bit_all) & ~bit_pawnattacks[!s])];
 		}
 	}
-	int diff, dec;
-	if (fifty > 10)
-	{
-		if (score[s] > score[xs])
-		{
-			diff = score[s] - score[xs];
-			dec = (fifty * diff) / 10;
-			if (dec > diff)
-				dec = diff;
-			score[s] -= dec;
-		}
-		else
-		{
-			diff = score[xs] - score[s];
-			dec = (fifty * diff) / 10;
-			if (dec > diff)
-				dec = diff;
-			score[xs] -= dec;
-		}
-	}
-	
 	return score[s] - score[xs];
-}
-
-bool RookBehind(const int s, const int from, const int to)
-{
-	const BITBOARD b1 = bit_after[to][from] & bit_pieces[s][R];
-	if (b1 && !(bit_between[from][NextBit(b1)] & bit_all))
-	{
-		return true;
-	}
-	return false;
 }
 
 int DrawnEnding(const int s, const int xs)
@@ -221,7 +180,7 @@ int DrawnEnding(const int s, const int xs)
 		{
 			const int knight_square = NextBit(bit_pieces[xs][N]);
 			if (!(mask[knight_square] & mask_corner) && col[knight_square] == col[pawn] &&
-				row2[xs][knight_square] < row2[xs][pawn] && !(bit_kingmoves[king] & mask[xking] && s == xside))
+				row2[xs][knight_square] < row2[xs][pawn] && !(bit_moves[K][king] & mask[xking] && s == xside))
 			{
 				return 1;
 			}
@@ -230,13 +189,12 @@ int DrawnEnding(const int s, const int xs)
 		//bishop v p
 		if (total[xs][B] == 1)
 		{
-			if ((bit_bishopmoves[pawnplus[s][pawn]] & bit_pieces[xs][B] ||
+			if ((bit_moves[B][pawnplus[s][pawn]] & bit_pieces[xs][B] ||
 				mask[pawnplus[s][pawn]] & bit_units[xs]) &&
-				!(bit_kingmoves[king] & bit_pieces[xs][B]))
+				!(bit_moves[K][king] & bit_pieces[xs][B]))
 			{
 				return 1;
 			}
-
 			return 0;
 		}
 		//rook v p
@@ -247,7 +205,7 @@ int DrawnEnding(const int s, const int xs)
 			if (difference[king][pawn] == 1 && king != to &&
 				difference[king][to] == 1 &&
 				difference[xking][to] >= dist + difference[king][to] &&
-				!(bit_kingmoves[king] & bit_pieces[xs][R]))
+				!(bit_moves[K][king] & bit_pieces[xs][R]))
 			{
 				return 1;
 			}
@@ -257,7 +215,7 @@ int DrawnEnding(const int s, const int xs)
 		if (piece_mat[xs] == Q_VALUE)
 		{
 			if ((col[pawn] == 0 || col[pawn] == 7) && row2[s][pawn] == 6 &&
-				difference[king][pawnplus[s][pawn]] < 2 && !(bit_pieces[xs][Q] & bit_kingmoves[king]) &&
+				difference[king][pawnplus[s][pawn]] < 2 && !(bit_pieces[xs][Q] & bit_moves[K][king]) &&
 				(abs(col[xking] - col[pawn]) > 4 || row2[xs][xking] > 4))
 			{
 				return 1;
@@ -266,29 +224,13 @@ int DrawnEnding(const int s, const int xs)
 				|| (col[pawn] == 5 && (col[king] == 6 || col[king] == 7))) &&
 				row2[s][pawn] == RANK_7 &&
 				difference[king][pawnplus[s][pawn]] < 2 &&
-				!(bit_pieces[xs][Q] & bit_kingmoves[king]) &&
+				!(bit_pieces[xs][Q] & bit_moves[K][king]) &&
 				(abs(col[xking] - col[pawn]) > 4 || row2[xs][xking] > 4))
 			{
 				return 1;
 			}
 			return 0;
 		}
-		return 0;
-	}
-
-	//phildor position
-	if (piece_mat[xs] == R_VALUE && piece_mat[s] == R_VALUE &&
-		pawn_mat[xs] == P_VALUE && pawn_mat[s] == 0)
-	{
-		const int pawn = NextBit(bit_pieces[xs][P]);
-		const int rook = NextBit(bit_pieces[s][R]);
-		if (mask_passed[xs][pawn] & bit_pieces[s][K] &&
-			!(bit_rookmoves[xking] & bit_pieces[xs][R]) &&
-			!(bit_rookmoves[xking] & bit_pieces[s][R]) &&
-			!(bit_kingmoves[xking] & bit_pieces[xs][R]) &&
-			!(bit_kingmoves[xking] & bit_pieces[s][R]) &&
-			row2[xs][pawn] < 5 && row[rook] == row[pawnplus[s][pawn]])
-			return 1;
 		return 0;
 	}
 
@@ -304,13 +246,29 @@ int DrawnEnding(const int s, const int xs)
 				return 1;
 			}
 	}
+	
+	//phildor position
+	if (piece_mat[xs] == R_VALUE && piece_mat[s] == R_VALUE &&
+		pawn_mat[xs] == P_VALUE && pawn_mat[s] == 0)
+	{
+		const int pawn = NextBit(bit_pieces[xs][P]);
+		const int rook = NextBit(bit_pieces[s][R]);
+		if (mask_passed[xs][pawn] & bit_pieces[s][K] &&
+			!(bit_moves[R][xking] & bit_pieces[xs][R]) &&
+			!(bit_moves[R][xking] & bit_pieces[s][R]) &&
+			!(bit_moves[K][xking] & bit_pieces[xs][R]) &&
+			!(bit_moves[K][xking] & bit_pieces[s][R]) &&
+			row2[xs][pawn] < 5 && row[rook] == row[pawnplus[s][pawn]])
+			return 1;
+		return 0;
+	}
 	return 0;
 }
 
 int PiecesPassedPawnScore(const int s, const int xs, const int king, const int xking)
 {
 	int score = 0;
-	BITBOARD b1 = passed_list[s] & ~(mask_squarepawn[xs][xking]);
+	BITBOARD b1 = passed_list[s] & ~(mask_squarepawn[side][xs][xking]);
 
 	while (b1)
 	{
@@ -347,11 +305,11 @@ int PiecesPassedPawnScore(const int s, const int xs, const int king, const int x
 		}
 		if (piece_mat[xs] == 0 && !(mask_path[s][sq] & bit_all))
 		{
-			score += PawnRace(s, xs, sq);
+			score += 100;
 		}
 		else if (total[xs][N] == 1)
 		{
-			score -= pawn_difference[king][sq] + pawn_difference[xking][sq];
+			score += pawn_difference[xking][sq];
 		}
 	}
 	return score;
@@ -367,61 +325,62 @@ int OppositeBishops()
 	return 0;
 }
 
-int KingVersusPawns(const int s, const int xs, const int real_side)
+int KingVersusPawns(const int s, const int xs)
 {
+	const int xking = kingloc[xs];
+	const int king = kingloc[s];
+
 	if (pawn_mat[xs] == P_VALUE)
 	{
 		const int pawn = NextBit(bit_pieces[xs][P]);
 
-		const int xking = kingloc[xs];
-		const int king = kingloc[s];
-
-		if (!(mask_squarepawn[xs][pawn] & bit_pieces[s][K]))
+		if (!(mask_squarepawn[side][xs][king] & mask[pawn]))
 		{
-			if (s == real_side)
-				return -600;
-			else
-				return 600;
+				return ply - 9900;
 		}
 		if (b[pawnplus[s][king]] == P ||
 			b[pawndouble[s][king]] == P)
 			if (row2[s][king] != 0 || bit_pieces[xs][P] & mask_rookfiles)
 			{
-				return 1;
+				return 0;
 			}
-		if (bit_pieces[xs][K] & mask_rookfiles &&
-			col[xking] == col[pawn] &&
-			difference[king][xking] == 2 && row2[xs][king] >= row2[xs][xking] &&
-			row2[xs][xking] > row2[xs][pawn])
-		{
-			return 1;
-		}
-		if ((col[pawn] == 0 || col[pawn] == 7)
-			&& abs(col[king] - col[pawn]) < 2 &&
-			row2[s][king] < row2[s][pawn])
-		{
-			return 1;
-		}
-		if (col[pawn] == 0 || col[pawn] == 7)//could be in main loop
-		{
-			if (row2[xs][pawn] > 3 && difference[pawn][king] > 1)
-			{
-				if (col[pawn] == 0 && xking == squares[xs][B7])
-				{
-					return -600;
-				}
-				if (col[pawn] == 7 && xking == squares[xs][G7])
-				{
-					return -600;
-				}
-			}
-		}
 		int p2 = pawndouble[xs][pawn];
 		if ((p2 == xking || p2 - 1 == xking || p2 + 1 == xking)
 			&& difference[pawn][xking] > 1)
 		{
-			return -600;
+			return ply - 9900;
 		}
+		if (!(bit_pieces[xs][P] & mask_rookfiles) && row2[xs][pawn] >= 5 && (bit_moves[K][xking] & mask[pawndouble[xs][pawn]]))
+		{
+			return ply - 9900;
+		}
+		if (col[pawn] == 0 || col[pawn] == 7)
+		{
+			if (col[xking] == col[pawn] &&
+				difference[king][xking] == 2 && row2[xs][king] >= row2[xs][xking] &&
+				row2[xs][xking] > row2[xs][pawn])
+			{
+				return 0;
+			}
+			if (abs(col[king] - col[pawn]) < 2 &&
+				row2[s][king] < row2[s][pawn])
+			{
+				return 0;
+			}
+			if (row2[xs][pawn] > 3 && difference[pawn][king] > 1)
+			{
+				if (col[pawn] == 0 && xking == squares[xs][B7])
+				{
+					return ply - 9900;
+				}
+				if (col[pawn] == 7 && xking == squares[xs][G7])
+				{
+					return ply - 9900;
+				}
+			}
+		}
+		int score = difference[king][p2] - difference[xking][p2] - passed[xs][pawn];
+		return score;
 	}
 	else
 	{
@@ -430,8 +389,6 @@ int KingVersusPawns(const int s, const int xs, const int real_side)
 		if (!(~mask_files[0] & xp) &&
 			!(~mask_files[7] & xp))
 		{
-			int xking = kingloc[xs];
-			int king = kingloc[s];
 			if (!(mask_passed[xs][king] & xp) &&
 				!(mask_passed[xs][xking] & xp))
 			{
@@ -449,7 +406,54 @@ int KingVersusPawns(const int s, const int xs, const int real_side)
 			}
 		}
 	}
-	return -100;
+	return king_endgame_score[king] - king_endgame_score[xking];
+}
+
+int PawnPositional(const int s, const int xs)
+{
+	int score = 0;
+	BITBOARD b1 = passed_list[s];
+
+	while (b1)
+	{
+		const int sq = NextBit(b1);
+		b1 &= b1 - 1;
+		//supported passed pawn
+		if (row2[s][sq] > 2)
+		{
+			if (bit_left[xs][sq] & bit_pieces[s][P])
+			{
+				int a = pawnleft[xs][sq];
+				if ((mask_passed[s][a] & ~mask[sq - 1] & bit_pieces[xs][P]) == 0)
+				{
+					score += 50;
+				}
+				else
+				{
+					if (bit_right[xs][sq] & bit_pieces[s][P])
+					{
+						a = pawnright[xs][sq];
+						if ((mask_passed[s][a] & ~mask[sq + 1] & bit_pieces[xs][P]) == 0)
+						{
+							score += 50;
+						}
+					}
+				}
+			}
+		}
+		//outside passed pawn
+		if ((col[sq] == 0 || (col[sq] == 1 && (mask_files[0] & bit_pieces[xs][P]) == 0)) &&
+			(bit_pieces[s][P] & mask_ghi))
+		{
+			score += 20;
+		}
+		if ((col[sq] == 7 || (col[sq] == 6 && (mask_files[7] & bit_pieces[xs][P]) == 0)) &&
+			(bit_pieces[s][P] & mask_abc))
+		{
+			score += 20;
+		}
+	}
+	return score;
 }
 
 int PawnEndingScore(const int s, const int xs)
@@ -469,7 +473,7 @@ int PawnEndingScore(const int s, const int xs)
 	{
 		const int sq = NextBit(b1);
 		b1 &= b1 - 1;
-		if (!(mask_squarepawn[s][sq] & bit_pieces[xs][K]))
+		if (!(mask_squarepawn[side][s][xking] & mask[sq]))
 		{
 			int distance = row2[xs][sq];
 			if (col[sq] == col[king])
@@ -479,9 +483,9 @@ int PawnEndingScore(const int s, const int xs)
 			runner = 1;
 			continue;
 		}
-		if (!(mask_path[s][sq] & ~bit_kingmoves[king]) &&
-			!(bit_kingmoves[xking] & mask[sq] &&
-				!(bit_kingmoves[king] & mask[sq])))
+		if (!(mask_path[s][sq] & ~bit_moves[K][king]) &&
+			!(bit_moves[K][xking] & mask[sq] &&
+				!(bit_moves[K][king] & mask[sq])))
 		{
 			int distance = row2[xs][sq];
 			if (col[sq] == col[king])
@@ -524,7 +528,7 @@ int PawnEndingScore(const int s, const int xs)
 	{
 		int sq = NextBit(b2);
 		b2 &= b2 - 1;
-		if (!(mask_squarepawn[xs][pawnplus[s][sq]] & bit_pieces[s][K]))
+		if (!(mask_squarepawn[side][xs][xking] & mask[sq]))
 		{
 			int distance = row2[s][sq];
 			if (col[sq] == col[king])
@@ -534,9 +538,9 @@ int PawnEndingScore(const int s, const int xs)
 			runnerx = 1;
 			continue;
 		}
-		if (!(mask_path[xs][sq] & ~bit_kingmoves[king]) &&
-			!(bit_kingmoves[xking] & mask[sq] &&
-				!(bit_kingmoves[king] & mask[sq])))
+		if (!(mask_path[xs][sq] & ~bit_moves[K][king]) &&
+			!(bit_moves[K][xking] & mask[sq] &&
+				!(bit_moves[K][king] & mask[sq])))
 		{
 			int distance = row2[s][sq];
 			if (col[sq] == col[king])
@@ -571,7 +575,6 @@ int PawnEndingScore(const int s, const int xs)
 			}
 		}
 	}
-
 	if (best < bestx)
 	{
 		int most_advanced = MostAdvancedPawn(xs, s);
@@ -580,7 +583,6 @@ int PawnEndingScore(const int s, const int xs)
 			return 600;
 		}
 	}
-
 	if (bestx + 1 < best)
 	{
 		int most_advanced = MostAdvancedPawn(xs, s);
@@ -590,61 +592,6 @@ int PawnEndingScore(const int s, const int xs)
 		}
 	}
 	return 0;
-}
-
-int GetDistance(const int xs,const int x, const int king)
-{
-int distance = row2[xs][x];
-if (col[x] == col[king])
-	distance++;
-return distance;
-}
-
-int PawnPositional(const int s, const int xs)
-{
-	int score = 0;
-	BITBOARD b1 = passed_list[s];
-
-	while (b1)
-	{
-		const int sq = NextBit(b1);
-		b1 &= b1 - 1;
-		//supported passed pawn
-		if (row2[s][sq] > 2)
-		{
-			if (bit_left[xs][sq] & bit_pieces[s][P])
-			{
-				int a = pawnleft[xs][sq];
-				if ((mask_passed[s][a] & not_mask[sq - 1] & bit_pieces[xs][P]) == 0)
-				{
-					score += 50;
-				}
-				else
-				{
-					if (bit_right[xs][sq] & bit_pieces[s][P])
-					{
-						a = pawnright[xs][sq];
-						if ((mask_passed[s][a] & not_mask[sq + 1] & bit_pieces[xs][P]) == 0)
-						{
-							score += 50;
-						}
-					}
-				}
-			}
-		}
-		//outside passed pawn
-		if ((col[sq] == 0 || (col[sq] == 1 && (mask_files[0] & bit_pieces[xs][P]) == 0)) &&
-			(bit_pieces[s][P] & mask_def))
-		{
-			score += 20;
-		}
-		if ((col[sq] == 7 || (col[sq] == 6 && (mask_files[7] & bit_pieces[xs][P]) == 0)) &&
-			(bit_pieces[s][P] & mask_abc))
-		{
-			score += 20;
-		}
-	}
-	return score;
 }
 
 int PawnRace(const int s, const int xs, const int p)
@@ -679,9 +626,9 @@ int PawnRace(const int s, const int xs, const int p)
 	if (path == path2)
 	{
 		int target = lastsquare[s][p];
-		if (bit_queenmoves[target] & mask[kingloc[xs]] &&
+		if (bit_moves[Q][target] & mask[kingloc[xs]] &&
 			!(bit_between[target][kingloc[xs]] & bit_all) &&
-			!(bit_kingmoves[kingloc[xs]] & mask[target])
+			!(bit_moves[K][kingloc[xs]] & mask[target])
 			)
 		{
 			return QUEENING - ply;
@@ -694,7 +641,7 @@ int LeastDifference(const int s, const int xs)
 {
 	BITBOARD b1 = bit_pieces[s][P] & ~passed_list[s];
 	int diff = 100;
-	int least = 0;
+	int least;
 
 	while (b1)
 	{
@@ -710,12 +657,10 @@ int LeastDifference(const int s, const int xs)
 int MostAdvancedPawn(const int s, const int xs)
 {
 	BITBOARD b1 = bit_pieces[s][P] & ~passed_list[s];
-
 	BITBOARD b2;
 	int advanced = 64;
-	int current;
-	
-	current = 0;
+	int current = 0;
+
 	while (b1)
 	{
 		const int sq = NextBit(b1);
@@ -728,12 +673,11 @@ int MostAdvancedPawn(const int s, const int xs)
 		b2 = mask_path[s][sq] & bit_pieces[xs][P];
 		if (current == 3 && !(bit_adjacent[sq] & ~bit_pieces[s][P]))
 		{
-			current = 3;
 			if (current < advanced)
 			{
 				advanced = current;
 				continue;
-			}				
+			}
 		}
 		if (b2)
 		{
@@ -752,15 +696,14 @@ int BlockedPawns(const int s, const int xs)
 	{
 		return 0;
 	}
-	if (s == 0 && ((bit_pieces[s][P] << 8) & bit_pieces[xs][P]) == bit_pieces[xs][P])
+	if (s == 0)
 	{
-		return 1;
+		if (bit_pieces[0][P] & (~(bit_units[0] | bit_units[1])) >> 8)
+			return 0;
 	}
-	if (s == 1 && ((bit_pieces[s][P] >> 8) & bit_pieces[xs][P]) == bit_pieces[xs][P])
-	{
-		return 1;
-	}
-	return 0;
+	else if (bit_pieces[1][P] & (~(bit_units[0] | bit_units[1])) << 8)
+		return 0;
+	return 1;
 }
 
 int OpposedPawns(const int s, const int xs)
@@ -778,11 +721,25 @@ int OpposedPawns(const int s, const int xs)
 	return 1;
 }
 
+int SafeKingMoves(const int s, const int xs)
+{
+	int	king = kingloc[s];
+	BITBOARD b1 = bit_moves[K][king] & ~bit_units[s];
+	while (b1)
+	{
+		int sq = NextBit(b1);
+		b1 &= b1 - 1;
+		if (!(Attack(xs, sq, bit_all)))
+			return 1;
+	}
+	return 0;
+}
+
 int EvalPawnless(const int s, const int xs)
 {
 	const int king = kingloc[s];
 	const int xking = kingloc[xs];
-		
+
 	if (startmat[0] != piece_mat[0] || startmat[1] != piece_mat[1])
 	{
 		int result = endmatrix[piece_mat[s]][total[s][N]][piece_mat[xs]][total[xs][N]];
@@ -792,8 +749,8 @@ int EvalPawnless(const int s, const int xs)
 		}
 		if (result != 0 &&
 			SafeKingMoves(s, xs) > 0 &&
-			!(bit_kingmoves[king] & bit_units[xs]) &&
-			!(bit_kingmoves[xking] & bit_units[s]))
+			!(bit_moves[K][king] & bit_units[xs]) &&
+			!(bit_moves[K][xking] & bit_units[s]))
 		{
 			return result;
 		}

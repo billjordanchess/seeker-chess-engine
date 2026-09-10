@@ -1,7 +1,7 @@
+//11/9/26
 #include "globals.h"
 
 char lines[100][80];
-move_data book_list[GEN_STACK];
 int total2;
 
 void LoadBook();
@@ -184,7 +184,7 @@ void LoadBook()
 	strcpy_s(lines[c++], "e2e4 e7e5 b1c3 g8f6 f1c4 b8c6 d2d3 f8b4 ");
 	strcpy_s(lines[c++], "e2e4 d7d5 e4d5 d8d5 b1c3 d5a5 d2d4 g8f6 ");
 	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 f8e7 ");
-	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 nbd7 ");
+	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 e7e6 b1c3 g8f6 c1g5 b8d7 ");
 	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 c7c6 b1c3 g8f6 g1f3 e7e6 ");
 	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 c7c6 b1c3 g8f6 g1f3 d5c4 ");
 	strcpy_s(lines[c++], "d2d4 d7d5 c2c4 c7c6 g1f3 g8f6 e2e3 b8d7 ");

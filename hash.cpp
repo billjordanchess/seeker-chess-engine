@@ -1,3 +1,4 @@
+//11/9/26
 #include "globals.h"
 
 #include <cstdint>
@@ -28,7 +29,7 @@ BITBOARD pawnlock[2][64];
 
 BITBOARD Random2(int size);
 
-const int HASH_SIZE = 25;
+const int HASH_SIZE = 24;// 25;
 const BITBOARD MAXHASH = 1ULL << HASH_SIZE;          
 const BITBOARD HASHMASK = MAXHASH - 1;
 
@@ -137,7 +138,7 @@ BITBOARD GetKey()
 	return key;
 }
 
-static inline size_t HashIndex(uint64_t key)
+size_t HashIndex(uint64_t key)
 {
 	key ^= key >> 32;
 	key ^= key >> 16;
@@ -169,8 +170,25 @@ void AddHash(const int s, int depth, int score, const int type,
 
 	const int oldDepth = (int)ptr->depth;
 
-	if (occupied && depth < oldDepth && type != EXACT)
-		return;
+	//if (occupied && depth < oldDepth && type != EXACT)
+	//	return;
+
+	if (occupied)
+	{
+		if (old_lock == (U64)currentkey)
+		{
+			if (depth < oldDepth)
+				return;
+		}
+		else
+		{
+			collisions++;
+
+			if (depth < oldDepth && type != EXACT)
+				return;
+		}
+	}
+	//
 
 	ptr->hashlock = (U64)currentkey;   
 

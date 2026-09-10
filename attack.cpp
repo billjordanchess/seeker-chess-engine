@@ -1,29 +1,25 @@
+//11/9/26
 #include "globals.h"
 
 #define MAGIC 1
 
-int king_attackers[MAX_PLY][2];
-int target_list[MAX_PLY][15];
 int targets[MAX_PLY];
 
-BITBOARD bit_rookattacks[2][8];
-BITBOARD bit_queenattacks[2][8];
+BITBOARD slider_moves[64][MAX_PLY];
 
 BITBOARD bit_kq_defends;
 
 BITBOARD bit_targets[MAX_PLY];
 
-BITBOARD bit_line_attackers[MAX_PLY];
-BITBOARD bit_defended[2][MAX_PLY];
-
 BITBOARD bit_attacked[2][6];
 BITBOARD bit_weaker[2][6];
-BITBOARD bit_total_attacks[2];
+BITBOARD bit_total_attacked[2];
+BITBOARD bit_total_weaker[2];
 BITBOARD bit_undefended[2];
 BITBOARD bit_undefended_squares[2];
 BITBOARD bit_defend_to[2][6];
 
-BITBOARD bit_adjacent_king[MAX_PLY][2];
+void SetSliderMoves();
 
 BITBOARD GetKnightAttacks(const int s);
 BITBOARD GetBishopAttacks(const int s);
@@ -31,10 +27,10 @@ BITBOARD GetRookAttacks(const int s);
 BITBOARD GetQueenAttacks(const int s);
 BITBOARD GetKingAttacks(const int s);
 
-bool RookAttack(const int s, const int from, const int to);
+bool RookQueenAttack(const int s, const int from, const int to);
 
-int GetLowestQuietAttacker(const int s, const int to);
 int GetLowestLineAttacker(const int s, const int sq);
+int GetLowestAttackerPins(const int s, const int sq, const BITBOARD pin_between);
 
 int GetAttackingSquare(const int s, const int sq);
 
@@ -46,17 +42,17 @@ bool LineAttack2(const int s, const int sq, const BITBOARD occ);
 
 bool IsCheck(const int piece, const int sq, const int king);
 
-bool Attack(const int s, const int sq)
+bool Attack(const int s, const int sq, const BITBOARD occ)
 {
 	if (bit_pawndefends[s][sq] & bit_pieces[s][P])
 		return true;
-	if (bit_knightmoves[sq] & bit_pieces[s][N])
+	if (bit_moves[N][sq] & bit_pieces[s][N])
 		return true;
-	if (MagicRookAttacks(sq, bit_all) & (bit_pieces[s][R] | bit_pieces[s][Q]))
+	if (MagicRookAttacks(sq, occ) & (bit_pieces[s][R] | bit_pieces[s][Q]))
 		return true;
-	if (MagicBishopAttacks(sq, bit_all) & (bit_pieces[s][B] | bit_pieces[s][Q]))
+	if (MagicBishopAttacks(sq, occ) & (bit_pieces[s][B] | bit_pieces[s][Q]))
 		return true;
-	if (bit_kingmoves[sq] & bit_pieces[s][K])
+	if (bit_moves[K][sq] & bit_pieces[s][K])
 		return true;
 	return false;
 }
@@ -65,7 +61,7 @@ bool Attack2(const int s, const int sq, const BITBOARD occ, const BITBOARD not_m
 {
 	if (bit_pawndefends[s][sq] & bit_pieces[s][P] & not_mover)
 		return true;
-	if (bit_knightmoves[sq] & bit_pieces[s][N] & not_mover)
+	if (bit_moves[N][sq] & bit_pieces[s][N] & not_mover)
 		return true;
 
 	if (MagicRookAttacks(sq, occ) & (bit_pieces[s][R] | bit_pieces[s][Q]) & not_mover)
@@ -73,20 +69,7 @@ bool Attack2(const int s, const int sq, const BITBOARD occ, const BITBOARD not_m
 	if (MagicBishopAttacks(sq, occ) & (bit_pieces[s][B] | bit_pieces[s][Q]) & not_mover)
 		return true;
 
-	if (bit_kingmoves[sq] & bit_pieces[s][K])
-		return true;
-	return false;
-}
-
-bool KingLessAttack(const int s, const int sq)
-{
-	if (bit_pawndefends[s][sq] & bit_pieces[s][P])
-		return true;
-	if (bit_knightmoves[sq] & bit_pieces[s][N])
-		return true;
-	if (MagicRookAttacks(sq, bit_all) & (bit_pieces[s][R] | bit_pieces[s][Q]))
-		return true;
-	if (MagicBishopAttacks(sq, bit_all) & (bit_pieces[s][B] | bit_pieces[s][Q]))
+	if (bit_moves[K][sq] & bit_pieces[s][K])
 		return true;
 	return false;
 }
@@ -96,7 +79,7 @@ int GetAttackingSquare(const int s, const int sq)
 	BITBOARD b1 = bit_pawndefends[s][sq] & bit_pieces[s][P];
 	if (b1)
 		return NextBit(b1);
-	b1 = bit_knightmoves[sq] & bit_pieces[s][N];
+	b1 = bit_moves[N][sq] & bit_pieces[s][N];
 	if (b1)
 		return NextBit(b1);
 
@@ -112,38 +95,16 @@ int GetAttackingSquare(const int s, const int sq)
 	if (b3)
 		return NextBit(b3);
 
-	if (bit_kingmoves[sq] & bit_pieces[s][K])
+	if (bit_moves[K][sq] & bit_pieces[s][K])
 		return kingloc[s];
 	return -1;
 }
 
-bool IsCheck(const int piece, const int sq, const int king)
+bool IsLineCheck(const int from, const int to, const int king)
 {
-	if (b[piece] > 0)
+	if (bit_moves[b[from]][to] & mask[king])
 	{
-		if (bit_moves[b[piece]][sq] & mask[king])
-		{
-			if (!(bit_between[sq][king] & bit_all))
-			{
-				return true;
-			}
-		}
-	}
-	else
-	{
-		if (bit_pawncaptures[xside][sq] & mask[king])
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-bool IsLineCheck(const int piece, const int sq, const int king)
-{
-	if (bit_moves[b[piece]][sq] & mask[king])
-	{
-		if (!(bit_between[sq][king] & bit_all))
+		if (!(bit_between[to][king] & bit_all))
 		{
 			return true;
 		}
@@ -156,7 +117,7 @@ int Check(const int s, const int sq)
 	int i, checker_square = -1;
 	int count = 0;
 
-	BITBOARD b1 = bit_knightmoves[sq] & bit_pieces[s][N];
+	BITBOARD b1 = bit_moves[N][sq] & bit_pieces[s][N];
 	if (b1)
 	{
 		checker_square = NextBit(b1);
@@ -173,8 +134,8 @@ int Check(const int s, const int sq)
 		checker_square = pawnright[!s][sq];
 		count++;
 	}
-	b1 = bit_bishopmoves[sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
-	b1 |= (bit_rookmoves[sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
+	b1 = bit_moves[B][sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
+	b1 |= (bit_moves[R][sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
 
 	while (b1)
 	{
@@ -193,45 +154,42 @@ int Check(const int s, const int sq)
 	return checker_square;
 }
 
-bool LineAttack(const int s, const int sq)
+bool LineAttack(const int s, const int sq, const BITBOARD occ)
 {
-	if (MagicRookAttacks(sq, bit_all) & (bit_pieces[s][R] | bit_pieces[s][Q]))
+	if (MagicRookAttacks(sq, occ) & (bit_pieces[s][R] | bit_pieces[s][Q]))
 		return true;
-	if (MagicBishopAttacks(sq, bit_all) & (bit_pieces[s][B] | bit_pieces[s][Q]))
+	if (MagicBishopAttacks(sq, occ) & (bit_pieces[s][B] | bit_pieces[s][Q]))
 		return true;
 	return false;
 }
 
 bool LineAttack2(const int s, const int sq, const BITBOARD occ)
 {
-	BITBOARD b1 = bit_bishopmoves[sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
-	b1 |= (bit_rookmoves[sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
+	BITBOARD b1 = bit_moves[B][sq] & (bit_pieces[s][B] | bit_pieces[s][Q]);
+	b1 |= (bit_moves[R][sq] & (bit_pieces[s][R] | bit_pieces[s][Q]));
 
 	while (b1)
 	{
 		int i = NextBit(b1);
-		if (!(bit_between[i][sq] & bit_all & occ))
+		if (!(bit_between[i][sq] & occ))
 			return true;
 		b1 &= b1 - 1;
 	}
 	return false;
 }
 
-bool RookAttack(const int s, const int from, const int to)
+bool RookQueenAttack(const int s, const int from, const int to)
 {
-	BITBOARD b1 = bit_rookmoves[to] & bit_pieces[s][R] & not_mask[from];
-	if (b1 && !(bit_between[to][NextBit(b1)] & bit_all))
-	{
-		return true;
-	}
-	return false;
+	return MagicRookAttacks(to, bit_all & ~mask[from]) &
+		(bit_pieces[s][R] | bit_pieces[s][Q]) &
+		~mask[from];
 }
 
 int GetLowestAttacker(const int s, const int sq)
 {
 	if (bit_pawndefends[s][sq] & bit_pieces[s][P])
 		return P;
-	if (bit_knightmoves[sq] & bit_pieces[s][N])
+	if (bit_moves[N][sq] & bit_pieces[s][N])
 		return N;
 
 	BITBOARD b1, b2;
@@ -246,24 +204,55 @@ int GetLowestAttacker(const int s, const int sq)
 	if ((b1 | b2) & bit_pieces[s][Q])
 		return Q;
 
-	if (bit_kingmoves[sq] & bit_pieces[s][K])
+	if (bit_moves[K][sq] & bit_pieces[s][K])
 		return K;
 	return -1;
 }
 
-int GetLowestQuietAttacker(const int s, const int to)
+int GetLowestAttacker2(const int s, const int sq, const BITBOARD occ)
 {
-	if (bit_attacked[s][P] & mask[to])
+	if (bit_pawndefends[s][sq] & bit_pieces[s][P] & occ)
 		return P;
-	if (bit_attacked[s][N] & mask[to])
+	if (bit_moves[N][sq] & bit_pieces[s][N] & occ)
 		return N;
-	if (bit_attacked[s][B] & mask[to])
-		return N;
-	if (bit_attacked[s][R] & mask[to])
+
+	BITBOARD b1, b2;
+	b1 = MagicBishopAttacks(sq, occ);
+	if (b1 & bit_pieces[s][B] & occ)
+		return B;
+
+	b2 = MagicRookAttacks(sq, occ);
+	if (b2 & bit_pieces[s][R] & occ)
 		return R;
-	if (bit_attacked[s][Q] & mask[to])
+
+	if ((b1 | b2) & bit_pieces[s][Q] & occ)
 		return Q;
-	if (bit_kingmoves[to] & bit_pieces[s][K])
+
+	if (bit_moves[K][sq] & bit_pieces[s][K])
+		return K;
+	return -1;
+}
+
+int GetLowestAttackerPins(const int s, const int sq, const BITBOARD pin_mask)
+{
+	if (bit_pawndefends[s][sq] & bit_pieces[s][P] & ~pin_mask)
+		return P;
+	if (bit_moves[N][sq] & bit_pieces[s][N] & ~pin_mask)
+		return N;
+
+	BITBOARD b1, b2;
+	b1 = MagicBishopAttacks(sq, bit_all);
+	if (b1 & bit_pieces[s][B] & ~pin_mask)
+		return B;
+
+	b2 = MagicRookAttacks(sq, bit_all);
+	if (b2 & bit_pieces[s][R] & ~pin_mask)
+		return R;
+
+	if ((b1 | b2) & bit_pieces[s][Q] & ~pin_mask)
+		return Q;
+
+	if (bit_moves[K][sq] & bit_pieces[s][K])
 		return K;
 	return -1;
 }
@@ -274,54 +263,49 @@ BITBOARD GetKnightAttacks(const int s)
 
 	for (int x = 0; x < total[s][N]; x++)
 	{
-		b1 |= bit_knightmoves[pieces[s][N][x]];
+		b1 |= bit_moves[N][pieces[s][N][x]];
 	}
 	return b1;
 }
 
 BITBOARD GetBishopAttacks(const int s)
 {
-	BITBOARD b1 = 0, b2;
+	BITBOARD b1 = 0;
 
 	for (int x = 0; x < total[s][B]; x++)
 	{
-		int sq = pieces[s][B][x];
-		b2 = MagicBishopAttacks(sq, bit_all);
-		b1 |= b2;
+		int from = pieces[s][B][x];
+		b1 |= slider_moves[from][ply];
 	}
 	return b1;
 }
 
 BITBOARD GetRookAttacks(const int s)
 {
-	BITBOARD b1 = 0, b2;
+	BITBOARD b1 = 0;
 
 	for (int x = 0; x < total[s][R]; x++)
 	{
-		int sq = pieces[s][R][x];
-		b2 = MagicRookAttacks(sq, bit_all);
-		bit_rookattacks[s][x] = b2;
-		b1 |= b2;
+		int from = pieces[s][R][x];
+		b1 |= slider_moves[from][ply];
 	}
 	return b1;
 }
 
 BITBOARD GetQueenAttacks(const int s)
 {
-	BITBOARD b1 = 0, b2;
+	BITBOARD b1 = 0;
 	for (int x = 0; x < total[s][Q]; x++)
 	{
-		int sq = pieces[s][Q][x];
-		b2 = MagicQueenAttacks(sq, bit_all);
-		bit_queenattacks[s][x] = b2;
-		b1 |= b2;
+		int from = pieces[s][Q][x];
+		b1 |= slider_moves[from][ply];
 	}
 	return b1;
 }
 
 BITBOARD GetKingAttacks(const int s)
 {
-	return bit_kingmoves[kingloc[s]];
+	return bit_moves[K][kingloc[s]];
 }
 
 void BuildAttackMap()
@@ -343,40 +327,61 @@ void BuildAttackMap()
 
 	for (int s = 0; s < 2; s++)//what attacks them
 	{
-		bit_weaker[s][B] = (bit_attacked[s][P]);
-		bit_weaker[s][N] = (bit_attacked[s][P]);
+		bit_weaker[s][B] = bit_attacked[s][P];
+		bit_weaker[s][N] = bit_attacked[s][P];
 		bit_weaker[s][R] = (bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B]);
 		bit_weaker[s][Q] = (bit_weaker[s][R] | bit_attacked[s][R]);
-		bit_total_attacks[s] = (bit_weaker[s][Q] | bit_attacked[s][Q] | bit_attacked[s][K]);
+		bit_total_attacked[s] = (bit_weaker[s][Q] | bit_attacked[s][Q] | bit_attacked[s][K]);
 	}
 
-	for (int s = 0; s < 2; s++)//what attacks them
+		bit_total_weaker[0] = (bit_weaker[1][N] & bit_pieces[0][N]) | (bit_weaker[1][B] & bit_pieces[0][B]) |
+			(bit_weaker[1][R] & bit_pieces[0][R]) | (bit_weaker[1][Q] & bit_pieces[0][Q]);
+		bit_total_weaker[1] = (bit_weaker[0][N] & bit_pieces[1][N]) | (bit_weaker[0][B] & bit_pieces[1][B]) |
+			(bit_weaker[0][R] & bit_pieces[1][R]) | (bit_weaker[0][Q] & bit_pieces[1][Q]);
+		//PrintBitBoard(bit_total_weaker[0]);
+		//z();
+
+	for (int s = 0; s < 2; s++)//what defends a move
 	{
-		BITBOARD bit_every =
-			bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B] | bit_attacked[s][R] | bit_attacked[s][Q] | bit_attacked[s][K];
-		bit_defend_to[s][N] = bit_every & ~bit_attacked[s][N];
-		bit_defend_to[s][B] = bit_every & ~bit_attacked[s][B];
-		bit_defend_to[s][R] = bit_every & ~bit_attacked[s][R];
-		bit_defend_to[s][Q] = bit_every & ~bit_attacked[s][Q];
-		bit_defend_to[s][K] = bit_total_attacks[s];
+		bit_defend_to[s][P] = bit_attacked[s][N] | bit_attacked[s][B] | bit_attacked[s][R] | bit_attacked[s][Q] | bit_attacked[s][K];
+		bit_defend_to[s][N] = bit_attacked[s][P] | bit_attacked[s][B] | bit_attacked[s][R] | bit_attacked[s][Q] | bit_attacked[s][K];
+		bit_defend_to[s][B] = bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][R] | bit_attacked[s][Q] | bit_attacked[s][K];
+		bit_defend_to[s][R] = bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B] | bit_attacked[s][Q] | bit_attacked[s][K];
+		bit_defend_to[s][Q] = bit_attacked[s][P] | bit_attacked[s][N] | bit_attacked[s][B] | bit_attacked[s][R] | bit_attacked[s][K];
+		bit_defend_to[s][K] = bit_weaker[s][Q] | bit_attacked[s][Q];
 	}
 
-	bit_undefended[0] = bit_units[0] & bit_total_attacks[1] & ~bit_total_attacks[0];
-	bit_undefended[1] = bit_units[1] & bit_total_attacks[0] & ~bit_total_attacks[1];
+	bit_undefended[0] = bit_units[0] & bit_total_attacked[1] & ~bit_total_attacked[0];
+	bit_undefended[1] = bit_units[1] & bit_total_attacked[0] & ~bit_total_attacked[1];
 
-	bit_undefended_squares[0] = bit_units[0] & ~bit_total_attacks[0];
-	bit_undefended_squares[1] = bit_units[1] & ~bit_total_attacks[1];
+	bit_undefended_squares[0] = bit_units[0] & ~bit_total_attacked[0];
+	bit_undefended_squares[1] = bit_units[1] & ~bit_total_attacked[1];
 
-	bit_kq_defends = 0;
-
-	if (!(bit_attacked[side][P] | bit_attacked[side][N] | bit_attacked[side][B] | bit_attacked[side][R])
-		&& (bit_attacked[side][Q] | bit_attacked[side][K]))
-		bit_kq_defends = bit_attacked[side][Q] | bit_attacked[side][K];
-
-	bit_line_attackers[ply] = bit_attacked[xside][B] | bit_attacked[xside][R] | bit_attacked[xside][Q];
-
-	bit_defended[side][ply] = bit_units[side] & bit_total_attacks[xside] & bit_total_attacks[side];
+	bit_kq_defends =
+		(bit_attacked[xside][Q] | bit_attacked[xside][K]) &
+		~(bit_attacked[xside][P] | bit_attacked[xside][N] |
+			bit_attacked[xside][B] | bit_attacked[xside][R]);
 }
 
-
+void SetSliderMoves()
+{
+	for (int s = 0; s < 2; s++)
+	{
+		for (int x = 0; x < total[s][B]; x++)
+		{
+			const int from = pieces[s][B][x];
+			slider_moves[from][ply] = MagicBishopAttacks(from, bit_all);
+		}
+		for (int x = 0; x < total[s][R]; x++)
+		{
+			const int from = pieces[s][R][x];
+			slider_moves[from][ply] = MagicRookAttacks(from, bit_all);
+		}
+		for (int x = 0; x < total[s][Q]; x++)
+		{
+			const int from = pieces[s][Q][x];
+			slider_moves[from][ply] = MagicQueenAttacks(from, bit_all);
+		}
+	}
+}
 

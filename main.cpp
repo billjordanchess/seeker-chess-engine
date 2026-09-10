@@ -1,3 +1,4 @@
+//11/9/26
 #define _CRT_SECURE_NO_WARNINGS
 
 #include "stdafx.h"
@@ -24,30 +25,27 @@ void BuildAttackMap();
 
 void GenRoot(const int, const int);
 
-void uci();
+//void uci();
 
 const int White = 0;
 const int  Black = 1;
 
 void ClearContHistory();
 
-int Train();
+//int Train();
 
 string MoveString(int, int, int);
 
 void GenCheck();
 void GenCaptures(const int s, const int xs, BITBOARD pin_mask);
-void GenQuietMoves(const int, BITBOARD, const BITBOARD(&bit_check)[6]);
+//void GenQuietMoves(const int, BITBOARD, const BITBOARD(&bit_check)[6]);
 BITBOARD GenChecks(const int, const int, BITBOARD);
 
 void ShowHelp();
 void SetUp();
 void xboard();
-
 void FreeAllHash();
-
 void AfterCastle(const int);
-
 void LoadBook();
 
 static char piece_char[2][6] =
@@ -94,13 +92,12 @@ void Free();
 move_data engine_move;
 
 double av = av_nodes;
-double cut = cut_nodes;
+U64 cut = cut_nodes;
 
 int main()
 {
-	cout << "seeker counters no target" << endl;
-	cout << "Bilbo Chess Engine 1.0" << endl;
-	cout << "Version new reduce , 19/2/26" << endl;
+	cout << "Seeker Chess Engine 1.0" << endl;
+	cout << "9/9/26" << endl;
 	cout << "Bill Jordan 2026" << endl;
 	cout << "FIDE Master and multiple state champion." << endl;
 	cout << "I have published a number of chess books" << endl;
@@ -149,7 +146,7 @@ int main()
 		if (side == computer_side)
 		{
 			player[side] = 1;
-			start_time = GetTime();//
+			start_time = GetTime();
 			engine_move = Think(fixed_time, max_depth);
 			turns++;
 
@@ -271,6 +268,7 @@ int main()
 		if (s == "sb")
 		{
 			sFen = "c:\\users\\bill\\desktop\\bscp\\";
+			//replace pathway
 			cin >> sText;
 			sFen += sText + ".fen";
 			LoadDiagram(sFen);
@@ -278,14 +276,14 @@ int main()
 		}
 		if (s == "sd")
 		{
-			scanf_s("%d", &max_depth);
+			cin >> max_depth;
 			max_time = 1 << 25;
 			fixed_depth = 1;
 			continue;
 		}
 		if (s == "st")
 		{
-			scanf_s("%ld", &max_time);
+			cin >> max_time;
 			max_time *= 1000;
 			max_depth = MAX_PLY;
 			fixed_time = 1;
@@ -299,8 +297,8 @@ int main()
 		}
 		if (s == "t")
 		{
-			Train();
-			continue;
+			//Train();
+			//continue;
 		}
 		if (s == "undo")
 		{
@@ -322,28 +320,27 @@ int main()
 		}
 		if (s == "uci")
 		{
-			uci();
+			//uci();
 			break;
 		}
 
 		ply = 0;
 		first_move[0] = 0;
 		GenRoot(side, xside);
-		//GenCheck();
-		//ShowAll(ply);
 		m = ParseMove(s);
 		from = move_list[m].from;
 		to = move_list[m].to;
 		flags = move_list[m].flags;
-		//Attack 26/4/21
-		if (m == -1 || !MakeMove(from, to, flags))
+
+		if (m == -1)
 		{
 			cout << "Illegal move. " << endl;
 			cout << s << " " << endl;
 			MoveString(from, to, 0);
-			if (m == -1)
-				cout << " m = -1 " << endl;
+			continue;
 		}
+		MakeMove(from, to, flags);
+
 		if (game_list[hply - 1].flags & PROMOTE && (row[to] == 0 || row[to] == 7))
 		{
 			RemovePiece(xside, Q, to);
@@ -477,15 +474,14 @@ void DisplayResult()
 	int flag = 0;
 
 	SetMaterial();
-
 	GenCheck();
 	for (i = 0; i < first_move[1]; i++)
-		if (MakeMove(move_list[i].from, move_list[i].to, move_list[i].flags))
-		{
-			UnMakeMove();
-			flag = 1;
-			break;
-		}
+	{
+		MakeMove(move_list[i].from, move_list[i].to, move_list[i].flags);
+		UnMakeMove();
+		flag = 1;
+		break;
+	}
 	if (pawn_mat[0] == 0 && pawn_mat[1] == 0 && piece_mat[0] <= B_VALUE && piece_mat[1] <= B_VALUE)
 	{
 		cout << "1/2-1/2 {Stalemate}" << endl;
@@ -499,7 +495,7 @@ void DisplayResult()
 		DisplayBoard();
 		cout << " end of game ";
 
-		if (Attack(xside, kingloc[side]))
+		if (Attack(xside, kingloc[side], bit_all))
 		{
 			if (side == 0)
 			{
@@ -544,10 +540,11 @@ int Reps()
 void xboard()
 {
 	int computer_side;
-	char line[256], command[256];
 	int m;
-	int post = 0;
-	int analyze = 0;
+
+	string s;
+	string sFen;
+	string sText;
 
 	signal(SIGINT, SIG_IGN);
 	printf("\n");
@@ -564,7 +561,7 @@ void xboard()
 
 			if (engine_move.from == 0 && engine_move.to == 0)
 			{
-				printf(" no engine move!\n");
+				cout << " no engine move!" << endl;
 				return;
 			}
 
@@ -582,27 +579,23 @@ void xboard()
 			DisplayResult();
 			continue;
 		}
-		if (!fgets(line, 256, stdin))
-			return;
-		if (line[0] == '\n')
+		cin >> s;
+		if (s == "xboard")
 			continue;
-		sscanf_s(line, "%s", command);
-		if (!strcmp(command, "xboard"))
-			continue;
-		if (!strcmp(command, "new"))
+		if (s == "new")
 		{
 			StartGame();
 			computer_side = 1;
 			continue;
 		}
-		if (!strcmp(command, "quit"))
+		if (s == "quit")
 			return;
-		if (!strcmp(command, "force"))
+		if (s == "force")
 		{
 			computer_side = EMPTY;
 			continue;
 		}
-		if (!strcmp(command, "white"))
+		if (s == "white")
 		{
 			side = 0;
 			xside = 1;
@@ -610,7 +603,7 @@ void xboard()
 			computer_side = 1;
 			continue;
 		}
-		if (!strcmp(command, "black"))
+		if (s == "black")
 		{
 			side = 1;
 			xside = 0;
@@ -618,66 +611,72 @@ void xboard()
 			computer_side = 0;
 			continue;
 		}
-		if (!strcmp(command, "sd"))
+		if (s == "sd")
 		{
-			sscanf_s(line, "sd %d", &max_depth);
+			cin >> max_depth;
 			max_time = 1 << 25;
 			fixed_depth = 1;
 			continue;
 		}
-		if (!strcmp(command, "st"))
+		if (s == "st")
 		{
-			sscanf_s(line, "st %lld", &max_time);
+			cin >> max_time;
 			max_time *= 1000;
 			max_depth = MAX_PLY;
 			fixed_time = 1;
 			fixed_depth = 0;
 			continue;
 		}
-		if (!strcmp(command, "time"))
+		if (s == "time")
 		{
-			sscanf_s(line, "time %lld", &max_time); // centiseconds
+			cin >> max_time;// centiseconds
 			max_depth = MAX_PLY;
 			fixed_time = 1;
+			if (max_time < 200)
+				max_depth = 4;
+			if (max_time < 100)
+				max_depth = 1;
 			continue;
 		}
-		if (!strcmp(command, "otim"))
+		if (s == "otim")
 		{
+			cin >> m;
 			continue;
 		}
-		if (!strcmp(command, "go"))
+		if (s == "level")
+		{
+			getline(cin, s);
+			continue;
+		}
+		if (s == "go")
 		{
 			computer_side = side;
 			continue;
 		}
-		if (!strcmp(command, "random"))
+		if (s == "random")
+			continue;			
+		if (s == "hard")
 			continue;
-		if (!strcmp(command, "level"))
+		if (s == "easy")
 			continue;
-		if (!strcmp(command, "hard"))
-			continue;
-		if (!strcmp(command, "easy"))
-			continue;
-		if (!strcmp(command, "post"))
+		if (s == "post")
 		{
-			post = 2;
 			continue;
 		}
-		if (!strcmp(command, "nopost"))
+		if (s == "nopost")
 		{
-			post = 0;
 			continue;
 		}
 
 		first_move[0] = 0;
 		ply = 0;
 		GenRoot(side, xside);
-
-		m = ParseMove(line);
-		if (m == -1 || !MakeMove(move_list[m].from, move_list[m].to, move_list[m].flags))
-			printf("Error (unknown command): %s\n", command);
+		m = ParseMove(s);
+		if (m == -1)
+			cout << "Error (unknown command): " << s << endl;
 		else
 		{
+			MakeMove(move_list[m].from, move_list[m].to, move_list[m].flags);
 			ply = 0;
 			DisplayResult();
 		}
@@ -727,13 +726,13 @@ static int LoadDiagram(string file_name)
 		case 'R': AddPiece(0, R, j); i++; break;
 		case 'B': AddPiece(0, B, j); i++; break;
 		case 'N': AddPiece(0, N, j); i++; break;
-		case 'P': AddPiece(0, P, j); i++; break;
+		case 'P': AddPawn(0, j); i++; break;
 		case 'k': AddPiece(1, K, j); kingloc[1] = j; i++; break;
 		case 'q': AddPiece(1, Q, j); i++; break;
 		case 'r': AddPiece(1, R, j); i++; break;
 		case 'b': AddPiece(1, B, j); i++; break;
 		case 'n': AddPiece(1, N, j); i++; break;
-		case 'p': AddPiece(1, P, j); i++; break;
+		case 'p': AddPawn(1, j); i++; break;
 		}
 		c++;
 		if (fen_text[c] == ' ')
@@ -836,7 +835,6 @@ U64 GetTime()
 			steady_clock::now().time_since_epoch()).count();
 }
 
-
 string MoveString(int from, int to, int promote)
 {
 	string str = "";
@@ -863,8 +861,8 @@ void GenCheck()
 	pins[0] = PinnersPossible(0, 1);
 	pins[1] = PinnersPossible(1, 0);
 	BITBOARD pin_mask = GetPinMask(side, xside);
-	BITBOARD bit_check_squares[6];
-	memset(bit_check_squares, 0, sizeof(bit_check_squares));
+	BITBOARD bit_check_main[6];
+	memset(bit_check_main, 0, sizeof(bit_check_main));
 
 	int check = Check(xside, kingloc[side]);
 	if (check > -1)
@@ -874,10 +872,11 @@ void GenCheck()
 	}
 	else
 	{
+		SetSliderMoves();
 		GenCaptures(side, xside, pin_mask);
 		bit_disco_pieces = GenChecks(side, xside, pin_mask);
 		BuildAttackMap();
-		GenQuietMoves(side, xside, pin_mask, bit_check_squares);
+		GenQuietMoves(side, xside, pin_mask, bit_check_main);
 	}
 }
 

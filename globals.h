@@ -22,17 +22,15 @@ constexpr unsigned int CHECK = (1u << 1);
 constexpr unsigned int INCHECK = (1u << 2);
 constexpr unsigned int PROMOTE = (1u << 3);
 constexpr unsigned int ATTACK = (1u << 4);
-constexpr unsigned int KILLER = (1u << 5);
-constexpr unsigned int PASSED6 = (1u << 6);
-constexpr unsigned int PASSED7 = (1u << 7);
-constexpr unsigned int MATETHREAT = (1u << 8);
-constexpr unsigned int CASTLE = (1u << 9);
-constexpr unsigned int COUNTER = (1u << 10);
-constexpr unsigned int DEFEND = (1u << 11);
-constexpr unsigned int PAWNMOVE = (1u << 12);
-constexpr unsigned int EP = (1u << 13);
-constexpr unsigned int DISCO = (1u << 14);
-constexpr unsigned int QUIET = (1u << 15);
+constexpr unsigned int PASSED6 = (1u << 5);
+constexpr unsigned int PASSED7 = (1u << 6);
+constexpr unsigned int MATETHREAT = (1u << 7);
+constexpr unsigned int CASTLE = (1u << 8);
+constexpr unsigned int DEFEND = (1u << 9);
+constexpr unsigned int PAWNMOVE = (1u << 10);
+constexpr unsigned int EP = (1u << 11);
+constexpr unsigned int DISCO = (1u << 12);
+constexpr unsigned int QUIET = (1u << 13);
 
 enum {
 	A1, B1, C1, D1, E1, F1, G1, H1,
@@ -73,12 +71,13 @@ constexpr int CHECK_SCORE = 900000;
 
 constexpr int ESCAPE_SCORE = 120000;
 constexpr int DEFEND_SCORE = 100000;
-constexpr int ATTACK_SCORE = 90000;//80000
+constexpr int ATTACK_SCORE = 9000;//90000
 constexpr int COUNTER_SCORE = 60000;
 constexpr int CONT_SCORE = 80000;
-constexpr int KILLER1_SCORE = 80000;
-constexpr int KILLER2_SCORE = 40000;
 constexpr int EN_PRISE_SCORE = 10000;
+constexpr int EN_PRISE_MINOR = 30000;
+constexpr int EN_PRISE_ROOK = 50000;
+constexpr int EN_PRISE_QUEEN = 90000;
 
 constexpr int BLUNDER_SCORE = 10000;
 
@@ -165,32 +164,30 @@ extern BITBOARD bit_e8a8;
 
 extern BITBOARD bit_attacked[2][6];
 extern BITBOARD bit_weaker[2][6];
-extern BITBOARD bit_line_attackers[MAX_PLY];
+extern BITBOARD bit_total_weaker[2];
 extern BITBOARD bit_undefended[2];
 extern BITBOARD bit_undefended_squares[2];
-extern BITBOARD bit_total_attacks[2];
+extern BITBOARD bit_total_attacked[2];
 
-extern int king_attackers[MAX_PLY][2];
-extern BITBOARD bit_adjacent_king[MAX_PLY][2];
-
-typedef  struct {
+struct am
+{
 	BITBOARD bit_attacked[2][6];
 	BITBOARD bit_weaker[2][6];
 	BITBOARD bit_line_attackers;
 	BITBOARD bit_undefended[2];
 	BITBOARD bit_undefended_squares;
-}am;
+};
 
-typedef struct
+struct move_data
 {
 	int piece;
 	int from;
 	int to;
 	int score;
 	unsigned int flags;
-} move_data;
+};
 
-typedef struct
+struct game
 {
 	int piece;
 	int from;
@@ -199,34 +196,13 @@ typedef struct
 	int capture;
 	int castle;
 	int fifty;
-	int streak;
 	BITBOARD hash;
 	BITBOARD lock;
-} game;
-
-typedef struct
-{
-	int from;
-	int to;
-	unsigned int flags;
-}lookup_move;
+};
 
 extern move_data hash_move;
 
 extern move_data move_list[GEN_STACK];
-
-typedef struct
-{
-	int first;
-	int last;
-	int next;
-} link;
-
-typedef struct
-{
-	int sq;
-	int next;
-}list1;
 
 struct hashpawn
 {
@@ -238,7 +214,7 @@ struct hashpawn
 
 /* Gen.cpp */
 void GenPromote(const int, const int, const int from, const int to);
-bool MakeMove(const int from, const int to, const int flags);
+void MakeMove(const int from, const int to, const int flags);
 void UnMakeMove();
 void GenCaptures(const int, const int, BITBOARD);
 
@@ -249,7 +225,7 @@ int Reps();
 int Reps2();
 
 /* eval.cpp */
-int Eval(const int s, const int xs, const int alpha, const int beta);
+int Eval(const int alpha, const int beta);
 
 /* main.cpp */
 U64 GetTime();
@@ -299,22 +275,19 @@ extern int hash_piece[2][6][64];
 extern int hash_side;
 extern int hash_ep[64];
 extern int castle_mask[64];
-//extern char piece_char[7];
 extern int startmat[2];
 
 extern BITBOARD currentkey;
 extern BITBOARD currentpawnkey, currentpawnlock;
 
 //bitboard.cpp
-extern BITBOARD mask_squarepawn[2][64];
-extern BITBOARD mask_squareking[2][64];
+extern BITBOARD mask_squarepawn[2][2][64];
 extern BITBOARD mask_edge;
 extern BITBOARD mask_corner;
 
 extern int difference[64][64];
 extern int pawn_difference[64][64];
 
-extern BITBOARD mask_squarepawn[2][64];
 extern BITBOARD bit_between[64][64];
 
 //legal moves from each square
@@ -322,11 +295,6 @@ extern BITBOARD bit_pawncaptures[2][64];
 extern BITBOARD bit_pawndefends[2][64];
 extern BITBOARD bit_left[2][64];
 extern BITBOARD bit_right[2][64];
-extern BITBOARD bit_knightmoves[64];
-extern BITBOARD bit_bishopmoves[64];
-extern BITBOARD bit_rookmoves[64];
-extern BITBOARD bit_queenmoves[64];
-extern BITBOARD bit_kingmoves[64];
 
 extern BITBOARD bit_moves[6][64];
 //current position
@@ -362,18 +330,12 @@ extern BITBOARD mask_nediag[64];
 extern BITBOARD bit_colors;
 
 extern BITBOARD mask_abc;
-extern BITBOARD mask_def;
-
-extern BITBOARD mask_kingpawns[2];
-extern BITBOARD mask_queenpawns[2];
+extern BITBOARD mask_ghi;
 
 extern BITBOARD mask[64];
-extern BITBOARD not_mask[64];
 extern BITBOARD not_mask_rookfiles;
 extern BITBOARD not_mask_edge;
 extern BITBOARD not_mask_corner;
-extern BITBOARD not_mask_files[8];
-extern BITBOARD not_mask_rows[8];
 
 extern BITBOARD not_a_file;
 extern BITBOARD not_h_file;
@@ -381,7 +343,6 @@ extern BITBOARD not_rank6;
 extern BITBOARD not_rank1;
 extern BITBOARD mask_wide_centre;
 
-extern int linemoves[64][8];
 extern int knightmoves[64][8];
 extern int kingmoves[64][8];
 extern int kingloc[2];
@@ -392,7 +353,6 @@ extern int pawn_mat[2];
 extern int captures[MAX_PLY];
 extern int extend[MAX_PLY];
 extern int Threat[MAX_PLY];
-extern int InCheck[MAX_PLY];
 
 extern int color[64];
 extern int b[64];
@@ -433,7 +393,7 @@ extern int total[2][6];
 
 extern int table_score[2];
 
-extern int piece_value[7];
+extern int piece_value[6];
 extern int done[1000];
 
 extern int passed[2][64];
@@ -464,8 +424,6 @@ extern int king_total[64];
 extern int check_history[6][64];
 extern int hist_from[2][6][64];
 extern int hist_to[2][6][64];
-
-void SetFromTo();
 
 //functions
 void PrintBitBoard(BITBOARD bb);
@@ -521,9 +479,9 @@ int CountBits(BITBOARD b1);
 void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(&bit_check)[6]);
 void GenQuietCaptures(const int s, const int xs, const int diff, BITBOARD pin_mask, BITBOARD bit_xpinned);
 
-bool Attack(const int s, const int sq);
+bool Attack(const int s, const int sq, const BITBOARD);
 bool CheckAttack(const int s, const int sq);
-bool LineAttack(const int s, const int sq);
+bool LineAttack(const int s, const int sq, const BITBOARD);
 
 void UpdatePawn(const int s, const int from, const int to);
 void RemovePawn(const int s, const int sq);
@@ -540,11 +498,8 @@ bool LookUp2(const int s);
 
 int LookUp(const int side, const int depth, const int alpha, const int beta);
 
-bool MakeCapture(const int, const int, const int);
+void MakeCapture(const int, const int, const int);
 void UnMakeCapture();
-
-void MakeRecapture(const int, const int);
-void UnMakeRecapture();
 
 int BlockedPawns(const int s, const int x);
 int SafeKingMoves(const int, const int);
@@ -552,16 +507,9 @@ int SafeKingMoves(const int, const int);
 bool IsThreat(const int s, const int xs, const int diff);
 
 extern int scale[200];
-extern int h_check[64][64];
-extern int v_check[64][64];
-extern int left_check[64][64];
-extern int right_check[64][64];
-extern int q_check[64][64][13];
 
 extern int stats_depth[20];
 extern int stats_count[100];
-extern int stats_killers[2];
-extern int total_killers[2];
 
 extern int PlyMove[MAX_PLY];
 extern int PlyType[MAX_PLY];
@@ -587,8 +535,7 @@ constexpr int Q_VALUE = 900;
 constexpr int BB_VALUE = 600;
 
 int GetLowestAttacker(const int s, const int sq);
-int GetNextAttackerSquare(const int s, const int, const int sq, const BITBOARD);
-int SEE(int s, const int a, const int sq, const BITBOARD p1, const BITBOARD p2);
+int GetLowestAttacker2(const int s, const int sq, const BITBOARD occ);
 
 void HashTest();
 
@@ -596,7 +543,7 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD);
 void EvadeCapture(const int s, const int xs, const int checker, BITBOARD);
 BITBOARD GetPinMask(const int s, const int xs);
 
-bool MakeQuietMove(const int from, const int to, const int flags);
+void MakeQuietMove(const int from, const int to, const int flags);
 void UnMakeQuietMove();
 
 extern const int px[6];
@@ -610,11 +557,6 @@ extern BITBOARD bit_attacked[2][6];
 extern BITBOARD bit_defend_to[2][6];
 
 extern BITBOARD bit_after[64][64];
-extern int target_list[MAX_PLY][15];
-extern int targets[MAX_PLY];
-extern BITBOARD bit_targets[MAX_PLY];
-
-extern BITBOARD bit_defended[2][MAX_PLY];
 
 extern int test_mode;
 
@@ -624,16 +566,12 @@ bool KingLessAttack(const int s, const int sq);
 
 void PlayOpening(int x);
 
-bool RookAttack(const int s, const int from, const int to);
+bool RookQueenAttack(const int s, const int from, const int to);
 
 bool SameDiag(const int a, const int b, const int c);
 bool SameLine(const int a, const int b, const int c);
 
-extern BITBOARD bit_high[64];
-extern BITBOARD bit_low[64];
-
-extern BITBOARD bit_rookattacks[2][8];
-extern BITBOARD bit_queenattacks[2][8];
+extern BITBOARD slider_moves[64][MAX_PLY];
 
 bool IsOneBit(BITBOARD x);
 int NextHighBit(BITBOARD bb);
@@ -646,6 +584,10 @@ U64 MagicQueenAttacks(int sq, U64 occ);
 bool IsCheck(const int p, const int sq, const int king);
 
 extern bool stop_search;
+
+void GenLastQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(&bit_check)[6]);
+
+void SetSliderMoves();
 
 
 

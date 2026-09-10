@@ -1,3 +1,4 @@
+﻿//11/9/26
 #include "globals.h"
 
 constexpr int BACKWARDS_PAWN_PENALTY = 8;
@@ -6,13 +7,9 @@ constexpr int MAJORITY_PENALTY = 20;
 constexpr int bishop_pair[2][3] = { {0,0,20},{0,0,20} };
 
 constexpr int knightsquares[8] = { -48,-48,2,3,4,5,6,7 };
-constexpr int bishopmoves[14] = { -5,1,2,3,4,5,6,7,8,9,10,11,12,13 };
+constexpr int bishopmoves[14] = { -4,1,2,3,4,5,6,7,8,9,10,11,12,13 };
 constexpr int rookmoves[15] = { -5,1,2,3,4,5,6,7,8,9,10,11,12,13,14 };
 constexpr int queenmoves[28] = { -5,1,1,1,2,2,2,3,3,3,4,4,4,5,5,5,6,6,6,7,7,7,8,8,8,9,9,9 };
-
-//masks for unmoved centre pawns
-const BITBOARD bit_unmoved_white = mask[D2] | mask[E2];
-const BITBOARD bit_unmoved_black = mask[D7] | mask[E7];
 
 int EvalPawns(const int s, const int xs);
 static int EvalPawn(const int s, const int xs, const int sq, const BITBOARD, const BITBOARD);
@@ -23,18 +20,20 @@ int CountBits(BITBOARD b1);
 
 void z();
 
-int Eval(const int real_s, const int real_xs, const int alpha, const int beta)
+int Eval(const int alpha, const int beta)
 {
+	static BITBOARD bit_unmoved_white = mask[D2] | mask[E2];
+	static BITBOARD bit_unmoved_black = mask[D7] | mask[E7];
 	if (piece_mat[0] <= Q_VALUE && piece_mat[1] <= Q_VALUE)
 	{
 		if (pawn_mat[0] == 0 && pawn_mat[1] == 0)
 		{
-			return EvalPawnless(real_s, real_xs);
+			return EvalPawnless(side, xside);
 		}
 		if ((piece_mat[0] < BB_VALUE || piece_mat[0] == Q_VALUE) &&
 			(piece_mat[1] < BB_VALUE || piece_mat[1] == Q_VALUE))
 		{
-			return EvalEndgame(real_s, real_xs);
+			return EvalEndgame(side, xside);
 		}
 	}
 
@@ -111,10 +110,10 @@ int Eval(const int real_s, const int real_xs, const int alpha, const int beta)
 		score[1] -= 150;
 	}
 	
-	int diff = score[real_s] - score[real_xs];
+	int diff = score[side] - score[xside];
 	if (diff + 80 <= alpha || diff - 80 > beta)
 	{
-		return score[real_s] - score[real_xs];
+		return score[side] - score[xside];
 	}
 
 	bit_pawnattacks[0] = (bit_pieces[0][P] & not_a_file) << 7;
@@ -130,17 +129,16 @@ int Eval(const int real_s, const int real_xs, const int alpha, const int beta)
 		for (int x = 0; x < total[s][N]; x++)
 		{
 			const int sq = pieces[s][N][x];
-			int nc = 0;
-			BITBOARD b1 = bit_knightmoves[sq] & ~bit_units[s] & ~bit_pawnattacks[xs];
-			nc = CountBits(b1);
+			BITBOARD b1 = bit_moves[N][sq] & ~bit_units[s] & ~bit_pawnattacks[xs];
+			int nc = CountBits(b1);
 			score[s] += knightsquares[nc];
-			if (bit_knightmoves[sq] & bit_kingmoves[kingloc[xs]])
+			if (bit_moves[N][sq] & bit_moves[K][kingloc[xs]])
 				score[s] += 2;
 		}
 		for (int x = 0; x < total[s][B]; x++)
 		{
 			const int sq = pieces[s][B][x];
-			if (bit_bishopmoves[sq] & bit_kingmoves[kingloc[xs]])
+			if (bit_moves[B][sq] & bit_moves[K][kingloc[xs]])
 				score[s] += 2;
 			score[s] += bishopmoves[CountBits(MagicBishopAttacks(sq, bit_all) & denied_squares)];
 		}
@@ -173,7 +171,6 @@ int Eval(const int real_s, const int real_xs, const int alpha, const int beta)
 			score[s] += queenmoves[CountBits(MagicQueenAttacks(sq, bit_all) & denied_squares)];
 		}
 	}
-
 	if (((bit_pieces[0][P] & bit_unmoved_white) << 8) & bit_all)
 	{
 		score[0] -= 20;
@@ -182,7 +179,7 @@ int Eval(const int real_s, const int real_xs, const int alpha, const int beta)
 	{
 		score[1] -= 20;
 	}
-	return score[real_s] - score[real_xs];
+	return score[side] - score[xside];
 }
 
 int EvalPawns(const int s, const int xs)
@@ -216,6 +213,11 @@ int EvalPawns(const int s, const int xs)
 int EvalPawn(const int s, const int xs, const int sq, const BITBOARD pawn_s, const BITBOARD pawn_xs)
 {
 	int score = 0;
+	kingside[s] += KingSide[s][sq];
+	queenside[s] += QueenSide[s][sq];
+	kingattack[xs] += KingSide2[s][sq];
+	queenattack[xs] += QueenSide2[s][sq];
+
 	if (!(mask_passed[s][sq] & pawn_xs) &&
 		!(mask_path[s][sq] & pawn_s))
 	{
@@ -230,10 +232,6 @@ int EvalPawn(const int s, const int xs, const int sq, const BITBOARD pawn_s, con
 		score += passed[s][sq];
 		score += PieceScore[s][0][sq];
 		passed_list[s] |= mask[sq];
-		kingside[s] += KingSide[s][sq];
-		queenside[s] += QueenSide[s][sq];
-		kingattack[xs] += KingSide2[s][sq];
-		queenattack[xs] += QueenSide2[s][sq];
 		return score;
 	}
 	if ((mask_isolated[sq] & pawn_s) == 0)
@@ -275,12 +273,6 @@ int EvalPawn(const int s, const int xs, const int sq, const BITBOARD pawn_s, con
 		}
 	}
 	score += PieceScore[s][0][sq];
-
-	kingside[s] += KingSide[s][sq];
-	queenside[s] += QueenSide[s][sq];
-
-	kingattack[xs] += KingSide2[s][sq];
-	queenattack[xs] += QueenSide2[s][sq];
 	return score;
 }
 

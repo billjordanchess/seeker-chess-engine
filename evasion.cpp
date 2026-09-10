@@ -1,3 +1,4 @@
+//11/9/26
 #include "globals.h"
 
 extern int move_count;
@@ -24,19 +25,24 @@ void EvadeDouble()
 {
 	move_count = first_move[ply];
 	int king = kingloc[side];
-	int to;
-	BITBOARD b1 = bit_kingmoves[king] & ~bit_units[side];
-	
+	BITBOARD b1 = bit_moves[K][king] & bit_units[xside];
 	while (b1)
 	{
-		to = NextBit(b1);
+		int to = NextBit(b1);
 		b1 &= b1 - 1;
-		if (!(Attack2(xside, to, bit_all & ~mask[king], ~mask[king])))
+		if (!(Attack(xside, to, bit_all & ~mask[king])))
 		{
-			if (b[to] == EMPTY)
-				AddEvasion(king, to, 0);
-			else
-				AddEvasion(king, to, kx[b[to]]);
+			AddEvasion(king, to, kx[b[to]]);
+		}
+	}
+	b1 = bit_moves[K][king] & ~bit_all;
+	while (b1)
+	{
+		int to = NextBit(b1);
+		b1 &= b1 - 1;
+		if (!(Attack(xside, to, bit_all & ~mask[king])))
+		{
+			AddEvasion(king, to, 0);
 		}
 	}
 	first_move[ply + 1] = move_count;
@@ -81,7 +87,7 @@ void EvadeCapture(const int s, const int xs, const int checker, BITBOARD pin_mas
 		AddEvasion(from, checker, px[check_piece]);
 	}
 
-	b1 = bit_pieces[s][N] & bit_knightmoves[checker] & ~pin_mask;
+	b1 = bit_pieces[s][N] & bit_moves[N][checker] & ~pin_mask;
 	while (b1)
 	{
 		int from = NextBit(b1);
@@ -89,7 +95,7 @@ void EvadeCapture(const int s, const int xs, const int checker, BITBOARD pin_mas
 		AddEvasion(from, checker, nx[check_piece]);
 	}
 
-	b1 = bit_pieces[s][B] & bit_bishopmoves[checker] & ~pin_mask;
+	b1 = bit_pieces[s][B] & bit_moves[B][checker] & ~pin_mask;
 	while (b1)
 	{
 		int from = NextBit(b1);
@@ -100,7 +106,7 @@ void EvadeCapture(const int s, const int xs, const int checker, BITBOARD pin_mas
 		}
 	}
 
-	b1 = bit_pieces[s][R] & bit_rookmoves[checker] & ~pin_mask;
+	b1 = bit_pieces[s][R] & bit_moves[R][checker] & ~pin_mask;
 	while (b1)
 	{
 		int from = NextBit(b1);
@@ -111,7 +117,7 @@ void EvadeCapture(const int s, const int xs, const int checker, BITBOARD pin_mas
 		}
 	}
 
-	b1 = bit_pieces[s][Q] & bit_queenmoves[checker] & ~pin_mask;
+	b1 = bit_pieces[s][Q] & bit_moves[Q][checker] & ~pin_mask;
 	while (b1)
 	{
 		int from = NextBit(b1);
@@ -122,12 +128,12 @@ void EvadeCapture(const int s, const int xs, const int checker, BITBOARD pin_mas
 		}
 	}
 
-	b1 = bit_kingmoves[king] & bit_units[xs];
+	b1 = bit_moves[K][king] & bit_units[xs];
 	while (b1)
 	{
 		int to = NextBit(b1);
 		b1 &= b1 - 1;
-		if (!(Attack2(xs, to, bit_all & ~mask[king], ~mask[king])))
+		if (!(Attack(xs, to, bit_all & ~mask[king])))
 		{
 			AddEvasion(king, to, kx[b[to]]);
 		}
@@ -142,18 +148,20 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 
 	move_count = first_move[ply + 1];
 
-	BITBOARD b1 = bit_kingmoves[king] & ~bit_all;
+	BITBOARD b1 = bit_moves[K][king] & ~bit_all;
 
 	while (b1)
 	{
 		int to = NextBit(b1);
 		b1 &= b1 - 1;
-		if( !(Attack2(xs, to, bit_all & ~mask[king], ~mask[king])))
+		if (!(Attack(xs, to, bit_all & ~mask[king])))
 			AddEvasion(king, to, 0);
 	}
 	
 	if (checker == DOUBLE_CHECK)
 	{
+		//Algebraic(checker);
+		//z();
 		return;
 	}
 
@@ -169,19 +177,19 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 
 	if (s == 0)
 	{
-		b1 = bit_pieces[0][P] & (between >> 8);
-		b2 = between & mask_ranks[0][3] & (bit_pieces[0][P] << 16) & ~(bit_all << 8);
+		b1 = bit_pieces[0][P] & ~pin_mask & (between >> 8);
+		b2 = between & ~pin_mask & mask_ranks[0][3] & ((bit_pieces[0][P] & ~pin_mask) << 16) & ~(bit_all << 8);
 	}
 	else
 	{
 		b1 = bit_pieces[1][P] & ~pin_mask & (between << 8);
-		b2 = between & ~pin_mask & mask_ranks[1][3] & (bit_pieces[1][P] >> 16) & ~(bit_all >> 8);
+		b2 = between & mask_ranks[1][3] & ((bit_pieces[1][P] & ~pin_mask) >> 16) & ~(bit_all >> 8);
 	}
 	while (b1)
 	{
 		int from = NextBit(b1);
 		b1 &= b1 - 1;
-		if (Attack(s, from) == 0)
+		if (Attack(s, from, bit_all) == 0)
 		{
 			AddEvasion(from, pawnplus[s][from], -100);
 		}
@@ -201,12 +209,12 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 	{
 		int from = NextBit(b1);
 		b1 &= b1 - 1;
-		b2 = bit_knightmoves[from] & between;
+		b2 = bit_moves[N][from] & between;
 		while (b2)
 		{
 			int to = NextBit(b2);
 			b2 &= b2 - 1;
-			if (Attack2(s, to, bit_all & not_mask[from], not_mask[from]) == 0 ||
+			if (!(Attack(xs, to, bit_all & ~mask[from])) ||
 				bit_pawndefends[xs][to] & bit_pieces[xs][P])
 			{
 				AddEvasion(from, to, -300);
@@ -216,13 +224,12 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 		}
 	}
 
-	b1 = bit_pieces[s][B] & ~pin_mask;//magics
+	b1 = bit_pieces[s][B] & ~pin_mask;
 	while (b1)
 	{
 		int from = NextBit(b1);
 		b1 &= b1 - 1;
-		b2 = bit_bishopmoves[from] & between;
-		//b2 = MagicBishopAttacks(from, bit_all) & line;
+		b2 = bit_moves[B][from] & between;
 
 		while (b2)
 		{
@@ -230,7 +237,9 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 			b2 &= b2 - 1;
 			if (!(bit_between[from][to] & bit_all))
 			{
-				if (Attack2(s, to, bit_all & not_mask[from], not_mask[from]) == 0 ||
+				//10 148 25 133014 
+				//10 148 25 132922 
+				if (Attack2(s, to, bit_all & ~mask[from], ~mask[from]) == 0 ||
 					bit_pawndefends[xs][to] & bit_pieces[xs][P])
 				{
 					AddEvasion(from, to, -300);
@@ -245,16 +254,16 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 	{
 		int from = NextBit(b1);
 		b1 &= b1 - 1;
-		b2 = bit_rookmoves[from] & between;
+		b2 = bit_moves[R][from] & between;
 		while (b2)
 		{
 			int to = NextBit(b2);
 			b2 &= b2 - 1;
 			if (!(bit_between[from][to] & bit_all))
 			{
-				if (Attack2(s, to, bit_all & not_mask[from], not_mask[from]) == 0 ||
+				if (Attack2(s, to, bit_all & ~mask[from], ~mask[from]) == 0 ||
 					bit_pawndefends[xs][to] & bit_pieces[xs][P] ||
-					bit_knightmoves[to] & bit_pieces[xs][N])
+					bit_moves[N][to] & bit_pieces[xs][N])
 				{
 					AddEvasion(from, to, -500);
 				}
@@ -263,24 +272,21 @@ void EvadeQuiet(const int s, const int xs, const int checker, BITBOARD pin_mask)
 			}
 		}
 	}
-
-	for (int x = 0; x < total[s][Q]; x++)
+	b1 = bit_pieces[s][Q] & ~pin_mask;
+	while (b1)
 	{
-		int from = pieces[s][Q][x];
-		if (mask[from] & pin_mask)
-		{
-			continue;
-		}
-		b2 = bit_queenmoves[from] & between;
+		int from = NextBit(b1);
+		b1 &= b1 - 1;
+		b2 = bit_moves[Q][from] & between;
 		while (b2)
 		{
 			int to = NextBit(b2);
 			b2 &= b2 - 1;
 			if (!(bit_between[from][to] & bit_all))
 			{
-				if (Attack2(s, to, bit_all & not_mask[from], not_mask[from]) == 0 ||
+				if (Attack2(s, to, bit_all & ~mask[from], ~mask[from]) == 0 ||
 					bit_pawndefends[xs][to] & bit_pieces[xs][P] ||
-					bit_knightmoves[to] & bit_pieces[xs][N])
+					bit_moves[N][to] & bit_pieces[xs][N])
 				{
 					AddEvasion(from, to, -900);
 				}
@@ -299,23 +305,23 @@ bool IsMate(const int checker)
 	int check_piece = b[checker];
 
 	const BITBOARD between = bit_between[checker][king];
-	BITBOARD b1 = bit_kingmoves[king] & bit_units[xside];
+	BITBOARD b1 = bit_moves[K][king] & bit_units[xside];
 
 	while (b1)
 	{
 		to = NextBit(b1);
 		b1 &= b1 - 1;
-		if (!(Attack2(xside, to, bit_all & ~mask[king], ~mask[king])))
+		if (!(Attack(xside, to, bit_all & ~mask[king])))
 			return false;
 	}
 
-	b1 = bit_kingmoves[king] & ~bit_all;
+	b1 = bit_moves[K][king] & ~bit_all;
 
 	while (b1)
 	{
 		to = NextBit(b1);
 		b1 &= b1 - 1;
-		if (!(Attack2(xside, to, bit_all & ~mask[king], ~mask[king])))
+		if (!(Attack(xside, to, bit_all & ~mask[king])))
 			return false;
 	}
 
@@ -325,7 +331,6 @@ bool IsMate(const int checker)
 	{
 		return true;
 	}
-
 	if (side == 0)
 	{
 		b1 = bit_pieces[0][P] & (between >> 8);
@@ -336,70 +341,55 @@ bool IsMate(const int checker)
 		b1 = bit_pieces[1][P] & (between << 8);
 		b2 = between & mask_ranks[1][3] & (bit_pieces[1][P] >> 16) & ~(bit_all >> 8);
 	}
-	while (b1)
+	if (b1 | b2)
 	{
-		to = NextBit(b1);
-		return false;
-		b1 &= b1 - 1;
-	}
-
-	while (b2)
-	{
-		to = NextBit(b2);
-		b2 &= b2 - 1;
 		return false;
 	}
-
 	for (int x = 0; x < total[side][N]; x++)
 	{
 		from = pieces[side][N][x];
-		b1 = bit_knightmoves[from] & between;
-		while (b1)
+		b1 = bit_moves[N][from] & between;
+		if (b1)
 		{
-			to = NextBit(b1);
 			return false;
-			b1 &= b1 - 1;
 		}
 	}
-
 	for (int x = 0; x < total[side][B]; x++)
 	{
 		from = pieces[side][B][x];
-		b2 = bit_bishopmoves[from] & between;
+		b2 = bit_moves[B][from] & between;
 		while (b2)
 		{
 			to = NextBit(b2);
-			if (!(bit_between[from][to] & bit_all))
+			if (!(between & bit_all))
 			{
 				return false;
 			}
 			b2 &= b2 - 1;
 		}
 	}
-
 	for (int x = 0; x < total[side][R]; x++)
 	{
 		from = pieces[side][R][x];
-		b2 = bit_rookmoves[from] & between;
+		b2 = bit_moves[R][from] & between;
 		while (b2)
 		{
 			to = NextBit(b2);
-			if (!(bit_between[from][to] & bit_all))
+			if (!(between & bit_all))
 			{
 				return false;
 			}
 			b2 &= b2 - 1;
 		}
 	}
-
 	for (int x = 0; x < total[side][Q]; x++)
 	{
 		from = pieces[side][Q][x];
-		b2 = bit_queenmoves[from] & between;
+		b2 = bit_moves[Q][from] & between;
 		while (b2)
 		{
 			to = NextBit(b2);		
-			if (!(bit_between[from][to] & bit_all))
+			if (!(between & bit_all))
 			{
 				return false;
 			}

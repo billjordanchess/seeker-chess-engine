@@ -1,3 +1,4 @@
+//11/9/26
 #include "globals.h"
 
 constexpr int WHITE_KING_CASTLE = 1;
@@ -19,7 +20,6 @@ game game_list[HIST_STACK];
 
 int first_move[MAX_PLY];
 
-//int history[64][64];
 int hist_from[2][6][64];
 int hist_to[2][6][64];
 
@@ -44,8 +44,6 @@ int castle_mask[64] = {
 	15, 15, 15, 15, 15, 15, 15, 15,
 	7, 15, 15, 15,  3, 15, 15, 11
 };
-
-enum Zone { QS = 0, CEN = 1, KS = 2 };
 
 //bitboard.cpp
 int pawnleft[2][64];
@@ -83,11 +81,6 @@ int KingSide2[2][64];
 int QueenSide2[2][64];
 int PawnBlocked[2][64];
 
-void SetKnightMoves();
-void SetKingMoves();
-
-void PrecomputeShieldLUTs(int);
-
 int Threat[MAX_PLY];
 
 int passed[2][64];
@@ -99,7 +92,7 @@ int castle_dest[64];
 
 int pawn_score[64] = {
 	  0,   0,   0,   0,   0,   0,   0,   0,
-	  0,   2,   4,  -8,  -8,   5,   2,   0,
+	  0,   2,   4,   0,   0,   5,   2,   0,//d2/e2 -8 to -6 24/7/26 -4
 	  0,   2,   4,   4,   4,   3,   2,   0,
 	  0,   2,   4,   8,   8,   4,   2,   0,
 	  0,   2,   4,   8,   8,   4,   2,   0,
@@ -153,7 +146,7 @@ int queen_score[64] = {
 };
 
 int king_score[64] = {
-	 20,  20, -20, -40,  10, -60, -40,  20,
+	 20,  20, -40, -40,  10, -60, -40,  20,
 	 10,  20, -25, -30, -30, -45,  20,  10,
 	-24, -24, -24, -24, -24, -24, -24, -24,
 	-24, -24, -24, -24, -24, -24, -24, -24,
@@ -185,28 +178,6 @@ int KingPawnLess[64] = {
 	-10, 0,  0,  0, 0,  0, 0, -10
 };
 
-int king_side2[64] = {
-	0, 0,  0,  0, 0,  0, 0, 0,
-	0, 0,  0,  0, 0,  0, 0, 0,
-	0, 0,  0,  0, 0,-20,-10, 0,
-	0, 0,  0,  0,-2,  2, 2, 2,
-	0, 0,  0,  0, 0,  4, 8, 8,
-	0, 0,  0,  0, 0,  4, 8, 8,
-	0, 0,  0,  0, 0,  4, 8, 8,
-	0, 0,  0,  0, 0,  0, 0, 0
-};
-
-int queen_side2[64] = {
-	0, 0,  0,  0, 0,  0, 0, 0,
-	0, 0,  0,  0, 0,  0, 0, 0,
-	0,-10,-20, 0, 0,  0, 0, 0,
-	2, 2,  2, -2, 0,  0, 0, 0,
-	8, 8,  4,  0, 0,  0, 0, 0,
-	8, 8,  4,  0, 0,  0, 0, 0,
-	8, 8,  4,  0, 0,  0, 0, 0,
-	0, 0,  0,  0, 0,  0, 0, 0
-};
-
 int Flip[64] = {
 	 56,  57,  58,  59,  60,  61,  62,  63,
 	 48,  49,  50,  51,  52,  53,  54,  55,
@@ -236,8 +207,8 @@ int isolated[64] =
 	10, 10, 10, 15, 15, 10, 10, 10,
 	10, 10, 10, 12, 12, 10, 10, 10,
 	10, 10, 10, 12, 12, 10, 10, 10,
-	10, 10, 10, 15, 15, 10, 10, 10,//6, 10, 10, 15, 15, 10, 10, 6,
-	10, 10, 10, 15, 15, 10, 10, 10,//5, 10, 10, 15, 15, 10, 10, 5, 1/5/25
+	10, 10, 10, 15, 15, 10, 10, 10,
+	10, 10, 10, 15, 15, 10, 10, 10,
 	0, 0, 0, 0, 0, 0, 0, 0
 };
 
@@ -259,7 +230,7 @@ int king_zone[2][64] = {
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
 	2, 2, 2, 2, 2, 2, 2, 2,
-	0, 0, 2, 2, 2, 1, 1, 1,
+	0, 0, 2, 2, 2, 2, 1, 1,
 	0, 0, 0, 2, 2, 2, 1, 1
 	}
 };
@@ -285,7 +256,6 @@ void SetCastle();
 void BeforeCastle(const int);
 
 void SetBoard();
-void ClearKillers();
 
 void FreeAllHash();
 
@@ -310,7 +280,6 @@ void StartGame()
 	first_move[0] = 0;
 	NewPosition();
 	SetBoard();
-	ClearKillers();
 	FreeAllHash();
 	BeforeCastle(0);
 	BeforeCastle(1);
@@ -370,11 +339,11 @@ void SetBoard()
 
 	for (int i = A2; i <= H2; i++)
 	{
-		AddPiece(0, P, i);
+		AddPawn(0, i);
 	}
 	for (int i = A7; i <= H7; i++)
 	{
-		AddPiece(1, P, i);
+		AddPawn(1, i);
 	}
 	for (int i = A3; i <= H6; i++)
 	{
@@ -431,8 +400,8 @@ void SetPawnless()
 	endmatrix[0][0][3][1] = DRAWN;//opponent has knight
 
 	endmatrix[3][0][3][0] = DRAWN;//B v B
-	endmatrix[3][1][3][0] = DRAWN;//N v N
-	endmatrix[3][0][3][1] = DRAWN;//B v B
+	endmatrix[3][1][3][0] = DRAWN;//N v B
+	endmatrix[3][0][3][1] = DRAWN;//B v N
 	endmatrix[3][1][3][1] = DRAWN;// N v N
 
 	endmatrix[6][0][0][0] = 9900;//side has 2 bishops
@@ -467,9 +436,6 @@ void SetScores()
 
 		KingScore[0][x] = king_score[x];
 		KingScore[1][x] = king_score[Flip[x]];
-
-		QueenSide2[1][x] = queen_side2[x];
-		KingSide2[1][x] = king_side2[x];
 
 		KingEndgame[0][x] = king_endgame_score[x];
 		KingEndgame[1][x] = king_endgame_score[x];
@@ -533,16 +499,5 @@ void SetKingPawnTable()
 		else if (x < 40)
 			scale[x] -= 10;
 	}
-}
-
-void SetFromTo()
-{
-	for (int s = 0; s < 2; s++)
-		for (int piece = 0; piece < 6; piece++)
-			for (int x = 0; x < 64; x++)
-			{
-				hist_from[s][piece][x] = -PieceScore[s][piece][x];
-				hist_to[s][piece][x] = PieceScore[s][piece][x];
-			}
 }
 

@@ -1,3 +1,4 @@
+//11/9/26
 #include "globals.h"
 
 bool IsOneBit(BITBOARD x);
@@ -6,11 +7,15 @@ void z();
 
 extern BITBOARD bit_attacked[2][6];
 extern BITBOARD bit_kq_defends;
+extern int target_bonus[64];
+extern BITBOARD bit_undefendable;
+extern BITBOARD bit_defendable;
+extern BITBOARD bit_unblock;
+extern BITBOARD bit_line;
 
-BITBOARD bit_king_defends;
-BITBOARD bit_queen_defends;
+extern int block[64], unblock[64];
 
-void GenDisco(const int x, const BITBOARD mask_line);
+void GenDisco(const int x, const BITBOARD mask_line, BITBOARD pin_mask);
 void AddDisco(const int from, const int to, const int piece);
 void RemoveDiscoChecks(const int startmoves);
 
@@ -39,15 +44,13 @@ void GenEP(BITBOARD);
 bool isSafeEP(const int ep, const int from);
 bool LineAttack2(const int s, const int sq, const BITBOARD occ);
 
-void AddRecapture(const int from, const int to);
-
 void AddCastle(const int from, const int to);
 
 void AddPawnMove(const int s, const int xs, const int from, const int to);
 void AddKnightMove(const int s, const int xs, const int from, const int to, const int);
-void AddBishopMove(const int s, const int xs, const int from, const int to, const int);
-void AddRookMove(const int s, const int xs, const int from, const int to, const int);
-void AddQueenMove(const int s, const int xs, const int from, const int to, const int);
+void AddBishopMove(const int s, const int xs, const int from, const int to, const int, const BITBOARD);
+void AddRookMove(const int s, const int xs, const int from, const int to, const int, const BITBOARD);
+void AddQueenMove(const int s, const int xs, const int from, const int to, const int, const BITBOARD);
 void AddKingMove(const int s, const int xs, const int from, const int to);
 
 void AddCastle(const int from, const int to);
@@ -56,12 +59,10 @@ void AddEP(const int from, const int to);
 void AddCapture(const int from, const int to, const unsigned int flags, const int score);
 
 void AddPawnCapture(const int from, const int to, const int score);
-void AddKnightCapture(const int from, const int to, const int score);
-void AddBishopCapture(const int from, const int to, const int score);
-void AddRookCapture(const int from, const int to, const int score);
-void AddQueenCapture(const int from, const int to, const int score);
 
 void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(&bit_check)[6]);
+
+BITBOARD bit_brq_attacks[64];
 
 move_data* g;
 
@@ -73,224 +74,128 @@ void GenCaptures(const int s, const int xs, BITBOARD pin_mask)
 	BITBOARD b1, b2;
 	BITBOARD bit_targets = bit_units[xs];
 
-	int lastmove = -1;
-	if (hply > 1)
-	{
-		lastmove = game_list[hply - 1].to;
-		PieceScore[xs][b[lastmove]][lastmove] += 50;
-	}
-
 	const int king = kingloc[s];
 	const int xking = kingloc[xs];
 
 	GenEP(0);
 
-	b1 = bit_pieces[s][P] & mask_ranks[s][6];
-	while (b1)
+	if (pin_mask == 0)
 	{
-		const int from = NextBit(b1);
-		b1 &= b1 - 1;
-		const int left = pawnleft[s][from];
-		if (bit_left[s][from] & bit_units[xs])
+		b1 = bit_pieces[s][P] & mask_ranks[s][6];
+		while (b1)
 		{
-			if (mask[from] & pin_mask)
+			const int from = NextBit(b1);
+			b1 &= b1 - 1;
+			const int left = pawnleft[s][from];
+			if (bit_left[s][from] & bit_units[xs])
 			{
-				if (!(SameDiag(from, left, king)))
-				{
-					continue;
-				}
+				GenPromote(s, xs, from, left);
 			}
-			GenPromote(s, xs, from, left);
+			const int right = pawnright[s][from];
+			if (bit_right[s][from] & bit_units[xs])
+			{
+				GenPromote(s, xs, from, right);
+			}
+			const int to = pawnplus[s][from];
+			if (b[to] == EMPTY)
+			{
+				GenPromote(s, xs, from, to);
+			}
 		}
-		const int right = pawnright[s][from];
-		if (bit_right[s][from] & bit_units[xs])
+		/*
+		b1 = bit_pieces[s][P] & mask_ranks[s][5];
+		while (b1)
 		{
-			if (mask[from] & pin_mask)
-			{
-				if (!(SameDiag(from, right, king)))
-				{
-					continue;
-				}
-			}
-			GenPromote(s, xs, from, right);
+			const int from = NextBit(b1);
+			b1 &= b1 - 1;
+			if (b[pawnplus[s][from] == EMPTY)
+				AddPawnMove(s, xs, from, pawnplus[s][from]);
 		}
-		const int to = pawnplus[s][from];
-		if (b[to] == EMPTY)
-		{
-			if (mask[from] & pin_mask)
-			{
-				if (col[from] != col[king])
-				{
-					continue;
-				}
-			}
-			GenPromote(s, xs, from, to);
-		}
-	}
-	/*
-	b1 = bit_pieces[s][P] & mask_ranks[s][5];
-	while (b1)
-	{
-		const int from = NextBit(b1);
-		b1 &= b1 - 1;
-		if (b[pawnplus[s][from] == EMPTY)
-			AddPawnMove(s, xs, from, pawnplus[s][from]);
-	}
-	*/
+		*/
 
-	if (s == 0)
-	{
-		b1 = bit_pieces[0][P] & ((bit_targets & not_h_file) >> 7) & not_rank6;
-		b2 = bit_pieces[0][P] & ((bit_targets & not_a_file) >> 9) & not_rank6;
-	}
-	else
-	{
-		b1 = bit_pieces[1][P] & ((bit_targets & not_h_file) << 9) & not_rank1;
-		b2 = bit_pieces[1][P] & ((bit_targets & not_a_file) << 7) & not_rank1;
-	}
-	while (b1)
-	{
-		const int from = NextBit(b1);
-		const int to = pawnleft[s][from];
-		b1 &= b1 - 1;
-		if (mask[from] & pin_mask)
+		if (s == 0)
 		{
-			if (!(SameDiag(from, to, king)))
-			{
-				continue;
-			}
-		}
-		AddPawnCapture(from, to, px[b[to]]);
-	}
-	while (b2)
-	{
-		const int from = NextBit(b2);
-		const int to = pawnright[s][from];
-		b2 &= b2 - 1;
-		if (mask[from] & pin_mask)
-		{
-			if (!(SameDiag(from, king, to)))
-			{
-				continue;
-			}
-		}
-		AddPawnCapture(from, to, px[b[to]]);
-	}
-	for (int x = 0; x < total[s][N]; x++)
-	{
-		const int from = pieces[s][N][x];
-		if (mask[from] & pin_mask)
-		{
-			continue;
-		}
-		b2 = bit_knightmoves[from] & bit_targets;
-		while (b2)
-		{
-			const int to = NextBit(b2);
-			const int piece = b[to];
-			unsigned int flags = 0;
-			if (bit_knightmoves[to] & bit_pieces[xs][K])
-				flags = CHECK;
-			AddCapture(from, to, flags, nx[piece] + PieceScore[xs][piece][to]);
-			b2 &= b2 - 1;
-		}
-	}
-	for (int x = 0; x < total[s][B]; x++)
-	{
-		const int from = pieces[s][B][x];
-		if (mask[from] & pin_mask)
-		{
-			if (bit_rookmoves[king] & mask[from])
-			{
-				continue;
-			}
-			else
-			{
-				b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
-				if (b2)
-				{
-					const int to = NextBit(b2);
-					int piece = b[to];
-					AddCapture(from, to, 0, bx[piece] + PieceScore[xs][piece][to]);
-				}
-			}
+			b1 = bit_pieces[0][P] & ((bit_targets & not_h_file) >> 7) & not_rank6;
+			b2 = bit_pieces[0][P] & ((bit_targets & not_a_file) >> 9) & not_rank6;
 		}
 		else
 		{
-			b2 = MagicBishopAttacks(from, bit_all) & bit_targets;
+			b1 = bit_pieces[1][P] & ((bit_targets & not_h_file) << 9) & not_rank1;
+			b2 = bit_pieces[1][P] & ((bit_targets & not_a_file) << 7) & not_rank1;
+		}
+		while (b1)
+		{
+			const int from = NextBit(b1);
+			const int to = pawnleft[s][from];
+			b1 &= b1 - 1;
+			AddPawnCapture(from, to, px[b[to]]);
+		}
+		while (b2)
+		{
+			const int from = NextBit(b2);
+			const int to = pawnright[s][from];
+			b2 &= b2 - 1;
+			AddPawnCapture(from, to, px[b[to]]);
+		}
+		for (int x = 0; x < total[s][N]; x++)
+		{
+			const int from = pieces[s][N][x];
+			b2 = bit_moves[N][from] & bit_targets;
 			while (b2)
 			{
 				const int to = NextBit(b2);
 				const int piece = b[to];
 				unsigned int flags = 0;
-				if (bit_bishopmoves[to] & bit_pieces[xs][K] &&
+				if (bit_moves[N][to] & bit_pieces[xs][K])
+					flags = CHECK;
+				AddCapture(from, to, flags, nx[piece] + PieceScore[xs][piece][to]);
+				b2 &= b2 - 1;
+			}
+		}
+		for (int x = 0; x < total[s][B]; x++)
+		{
+			const int from = pieces[s][B][x];
+			b2 = slider_moves[from][ply] & bit_targets;
+			while (b2)
+			{
+				const int to = NextBit(b2);
+				const int piece = b[to];
+				unsigned int flags = 0;
+				if (bit_moves[B][to] & bit_pieces[xs][K] &&
 					!(bit_between[to][xking] & bit_all))
 					flags = CHECK;
 				AddCapture(from, to, flags, bx[piece] + PieceScore[xs][piece][to]);
 				b2 &= b2 - 1;
 			}
 		}
-	}
 
-	for (int x = 0; x < total[s][R]; x++)
-	{
-		const int from = pieces[s][R][x];
-		if (mask[from] & pin_mask)
+		for (int x = 0; x < total[s][R]; x++)
 		{
-			if (bit_bishopmoves[king] & mask[from])
-			{
-				continue;
-			}
-			else
-			{
-				b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
-				if (b2)
-				{
-					const int to = NextBit(b2);
-					const int piece = b[to];
-					AddCapture(from, to, 0, rx[piece] + PieceScore[xs][piece][to]);
-				}
-			}
-		}
-		else
-		{
-			b2 = MagicRookAttacks(from, bit_all) & bit_targets;
+			const int from = pieces[s][R][x];
+			b2 = slider_moves[from][ply] & bit_targets;
 			while (b2)
 			{
 				const int to = NextBit(b2);
 				const int piece = b[to];
 				unsigned int flags = 0;
-				if (bit_rookmoves[to] & bit_pieces[xs][K] &&
+				if (bit_moves[R][to] & bit_pieces[xs][K] &&
 					!(bit_between[to][xking] & bit_all))
 					flags = CHECK;
 				AddCapture(from, to, flags, rx[piece] + PieceScore[xs][piece][to]);
 				b2 &= b2 - 1;
 			}
 		}
-	}
 
-	for (int x = 0; x < total[s][Q]; x++)
-	{
-		const int from = pieces[s][Q][x];
-		if (mask[from] & pin_mask)
+		for (int x = 0; x < total[s][Q]; x++)
 		{
-			b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
-			if (b2)
-			{
-				const int to = NextBit(b2);
-				const int piece = b[to];
-				AddCapture(from, to, 0, qx[piece] + PieceScore[xs][piece][to]);
-			}
-		}
-		else
-		{
-			b2 = MagicQueenAttacks(from, bit_all) & bit_targets;
+			const int from = pieces[s][Q][x];
+			b2 = slider_moves[from][ply] & bit_targets;
 			while (b2)
 			{
 				const int to = NextBit(b2);
 				const int piece = b[to];
 				unsigned int flags = 0;
-				if (bit_queenmoves[to] & bit_pieces[xs][K] &&
+				if (bit_moves[Q][to] & bit_pieces[xs][K] &&
 					!(bit_between[to][xking] & bit_all))
 					flags = CHECK;
 				AddCapture(from, to, flags, qx[piece] + PieceScore[xs][piece][to]);
@@ -298,19 +203,230 @@ void GenCaptures(const int s, const int xs, BITBOARD pin_mask)
 			}
 		}
 	}
-	b1 = bit_kingmoves[king] & bit_targets;
+	else
+	{
+		{
+			b1 = bit_pieces[s][P] & mask_ranks[s][6];
+			while (b1)
+			{
+				const int from = NextBit(b1);
+				b1 &= b1 - 1;
+				const int left = pawnleft[s][from];
+				if (bit_left[s][from] & bit_units[xs])
+				{
+					if (mask[from] & pin_mask)
+					{
+						if (!(SameDiag(from, left, king)))
+						{
+							continue;
+						}
+					}
+					GenPromote(s, xs, from, left);
+				}
+				const int right = pawnright[s][from];
+				if (bit_right[s][from] & bit_units[xs])
+				{
+					if (mask[from] & pin_mask)
+					{
+						if (!(SameDiag(from, right, king)))
+						{
+							continue;
+						}
+					}
+					GenPromote(s, xs, from, right);
+				}
+				const int to = pawnplus[s][from];
+				if (b[to] == EMPTY)
+				{
+					if (mask[from] & pin_mask)
+					{
+						continue;
+					}
+					GenPromote(s, xs, from, to);
+				}
+			}
+			/*
+			b1 = bit_pieces[s][P] & mask_ranks[s][5];
+			while (b1)
+			{
+				const int from = NextBit(b1);
+				b1 &= b1 - 1;
+				if (b[pawnplus[s][from] == EMPTY)
+					AddPawnMove(s, xs, from, pawnplus[s][from]);
+			}
+			*/
+
+			if (s == 0)
+			{
+				b1 = bit_pieces[0][P] & ((bit_targets & not_h_file) >> 7) & not_rank6;
+				b2 = bit_pieces[0][P] & ((bit_targets & not_a_file) >> 9) & not_rank6;
+			}
+			else
+			{
+				b1 = bit_pieces[1][P] & ((bit_targets & not_h_file) << 9) & not_rank1;
+				b2 = bit_pieces[1][P] & ((bit_targets & not_a_file) << 7) & not_rank1;
+			}
+			while (b1)
+			{
+				const int from = NextBit(b1);
+				const int to = pawnleft[s][from];
+				b1 &= b1 - 1;
+				if (mask[from] & pin_mask)
+				{
+					if (!(SameDiag(from, to, king)))
+					{
+						continue;
+					}
+				}
+				AddPawnCapture(from, to, px[b[to]]);
+			}
+			while (b2)
+			{
+				const int from = NextBit(b2);
+				const int to = pawnright[s][from];
+				b2 &= b2 - 1;
+				if (mask[from] & pin_mask)
+				{
+					if (!(SameDiag(from, king, to)))
+					{
+						continue;
+					}
+				}
+				AddPawnCapture(from, to, px[b[to]]);
+			}
+			for (int x = 0; x < total[s][N]; x++)
+			{
+				const int from = pieces[s][N][x];
+				if (mask[from] & pin_mask)
+				{
+					continue;
+				}
+				b2 = bit_moves[N][from] & bit_targets;
+				while (b2)
+				{
+					const int to = NextBit(b2);
+					const int piece = b[to];
+					unsigned int flags = 0;
+					if (bit_moves[N][to] & bit_pieces[xs][K])
+						flags = CHECK;
+					AddCapture(from, to, flags, nx[piece] + PieceScore[xs][piece][to]);
+					b2 &= b2 - 1;
+				}
+			}
+			for (int x = 0; x < total[s][B]; x++)
+			{
+				const int from = pieces[s][B][x];
+				if (mask[from] & pin_mask)
+				{
+					if (bit_moves[R][king] & mask[from])
+					{
+						continue;
+					}
+					else
+					{
+						b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
+						if (b2)
+						{
+							const int to = NextBit(b2);
+							int piece = b[to];
+							AddCapture(from, to, 0, bx[piece] + PieceScore[xs][piece][to]);
+						}
+					}
+				}
+				else
+				{
+					b2 = slider_moves[from][ply] & bit_targets;
+					while (b2)
+					{
+						const int to = NextBit(b2);
+						const int piece = b[to];
+						unsigned int flags = 0;
+						if (bit_moves[B][to] & bit_pieces[xs][K] &&
+							!(bit_between[to][xking] & bit_all))
+							flags = CHECK;
+						AddCapture(from, to, flags, bx[piece] + PieceScore[xs][piece][to]);
+						b2 &= b2 - 1;
+					}
+				}
+			}
+
+			for (int x = 0; x < total[s][R]; x++)
+			{
+				const int from = pieces[s][R][x];
+				if (mask[from] & pin_mask)
+				{
+					if (bit_moves[B][king] & mask[from])
+					{
+						continue;
+					}
+					else
+					{
+						b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
+						if (b2)
+						{
+							const int to = NextBit(b2);
+							const int piece = b[to];
+							AddCapture(from, to, 0, rx[piece] + PieceScore[xs][piece][to]);
+						}
+					}
+				}
+				else
+				{
+					b2 = slider_moves[from][ply] & bit_targets;
+					while (b2)
+					{
+						const int to = NextBit(b2);
+						const int piece = b[to];
+						unsigned int flags = 0;
+						if (bit_moves[R][to] & bit_pieces[xs][K] &&
+							!(bit_between[to][xking] & bit_all))
+							flags = CHECK;
+						AddCapture(from, to, flags, rx[piece] + PieceScore[xs][piece][to]);
+						b2 &= b2 - 1;
+					}
+				}
+			}
+
+			for (int x = 0; x < total[s][Q]; x++)
+			{
+				const int from = pieces[s][Q][x];
+				if (mask[from] & pin_mask)
+				{
+					b2 = (bit_after[king][from] & pin_mask & bit_units[xs]);
+					if (b2)
+					{
+						const int to = NextBit(b2);
+						const int piece = b[to];
+						AddCapture(from, to, 0, qx[piece] + PieceScore[xs][piece][to]);
+					}
+				}
+				else
+				{
+					b2 = slider_moves[from][ply] & bit_targets;
+					while (b2)
+					{
+						const int to = NextBit(b2);
+						const int piece = b[to];
+						unsigned int flags = 0;
+						if (bit_moves[Q][to] & bit_pieces[xs][K] &&
+							!(bit_between[to][xking] & bit_all))
+							flags = CHECK;
+						AddCapture(from, to, flags, qx[piece] + PieceScore[xs][piece][to]);
+						b2 &= b2 - 1;
+					}
+				}
+			}
+		}
+	}
+	b1 = bit_moves[K][king] & bit_targets;
 
 	while (b1)
 	{
 		const int to = NextBit(b1);
 		const int piece = b[to];
-		if (!Attack(xs, to))
+		if (!Attack(xs, to, bit_all))
 			AddCapture(king, to, 0, kx[piece] + PieceScore[xside][piece][to]);
 		b1 &= b1 - 1;
-	}
-	if (lastmove > -1)
-	{
-		PieceScore[xs][b[lastmove]][lastmove] -= 50;
 	}
 	first_move[ply + 1] = move_count;
 }
@@ -342,7 +458,7 @@ void GenEP(BITBOARD pin_mask)
 
 bool isSafeEP(const int ep, const int from)
 {
-	if (!(LineAttack2(xside, kingloc[side], bit_all & not_mask[ep] & not_mask[from])))
+	if (!(LineAttack(xside, kingloc[side], bit_all & ~mask[ep] & ~mask[from])))
 	{
 		return true;
 	}
@@ -385,14 +501,7 @@ void AddPawnCapture(const int from, const int to, const int score)
 	g->score = score;
 }
 
-void AddRecapture(const int from, const int to)
-{
-	g = &move_list[first_move[ply + 1]++];
-	g->from = from;
-	g->to = to;
-}
-
-void AddPawnMove(const int s, const int xs, const int from, const int to)//, const int bonus
+void AddPawnMove(const int s, const int xs, const int from, const int to)
 {
 	if (bit_pawncaptures[s][to] & bit_pieces[xs][K])
 	{
@@ -409,34 +518,43 @@ void AddPawnMove(const int s, const int xs, const int from, const int to)//, con
 		g->score += ATTACK_SCORE + 10000;
 		g->flags |= PASSED7;
 	}
-	if (mask[from] & bit_total_attacks[xs])
+	if (target_bonus[from])
 	{
-		if (mask[from] & (bit_undefended[s] | bit_kq_defends))//
+		g->score = ESCAPE_SCORE;
+	}
+	BITBOARD b1 = bit_pawncaptures[s][from] & bit_units[s] & ~bit_defend_to[s][P] & bit_total_attacked[xs] & ~bit_total_weaker[s];
+	while (b1)
+	{
+		int square = NextBit(b1);
+		b1 &= b1 - 1;
+		if (!(bit_pawncaptures[xs][square] & bit_pieces[s][P] & ~mask[from]))
 		{
-			g->score += ESCAPE_SCORE;
+			g->score = -EN_PRISE_SCORE;
+			break;
 		}
 	}
-	if (bit_pawncaptures[s][to] & bit_units[xs] & ~bit_pieces[xs][P])
+	b1 = bit_pawncaptures[side][to] & bit_defendable;
+	if (b1)
+	{
+		int square = NextBit(b1);
+		g->score += DEFEND_SCORE + piece_value[b[square]];
+	}
+	//*
+	if (bit_defendable && mask[from] & bit_unblock && (mask[to] & bit_unblock) == 0)
+	{
+		int sq = unblock[from];
+		g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+	}
+	//*/
+	if (mask[to] & bit_line)
+	{
+		g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+	}
+	if (bit_pawncaptures[s][to] & bit_units[xs] & (~bit_pieces[xs][P] | bit_total_attacked[s]))//
 	{
 		g->score += 500 + ATTACK_SCORE;
 		g->flags |= ATTACK;
 	}
-}
-
-void AddKingMove(const int s, const int xs, const int from, const int to)
-{
-	g = &move_list[move_count++];
-	g->flags = 0;
-	g->from = from;
-	g->to = to;
-	g->score = hist_from[s][K][from] + hist_to[s][K][to];
-	//*
-	if (bit_kingmoves[to] & bit_units[xs] & bit_undefended_squares[xs])
-	{
-		g->score += 40 + ATTACK_SCORE;
-		g->flags |= ATTACK;
-	}
-	//*/
 }
 
 void AddKnightMove(const int s, const int xs, const int from, const int to, const int bonus)
@@ -448,32 +566,43 @@ void AddKnightMove(const int s, const int xs, const int from, const int to, cons
 	g->score = hist_from[s][N][from] + hist_to[s][N][to];
 
 	if (mask[to] & bit_weaker[xs][N] ||
-		(mask[to] & bit_total_attacks[xs] && !(mask[to] & bit_defend_to[s][N]) && !(bit_knightmoves[to] & bit_pieces[s][N] & ~mask[from])))
+		(mask[to] & bit_total_attacked[xs] && !(mask[to] & bit_defend_to[s][N]) &&
+			!(bit_moves[N][to] & bit_pieces[s][N] & ~mask[from])))
 	{
-		g->score = -3 * EN_PRISE_SCORE;
+		g->score = -EN_PRISE_MINOR;
 	}
 	else
 	{
-		if (bit_knightmoves[to] & (bit_attackable[N] | bit_kq_defends))
+		BITBOARD b1 = bit_defendable;
+		while (b1)
 		{
-			g->score += 40 + ATTACK_SCORE;
-			g->flags |= ATTACK;
-			if (bit_knightmoves[to] & bit_kq_defends)
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if ((bit_moves[N][to] & mask[square]) && square != from)
 			{
-				//printf("knight ");
-				//Alg(from, to);
-				//z();
+				g->score += DEFEND_SCORE + piece_value[b[square]];
 			}
 		}
-		g->score += bonus;
+		if (bit_defendable && mask[from] & bit_unblock)
+		{
+			int sq = unblock[from];
+			g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+		}
+		if (mask[to] & bit_line)
+		{
+			g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+		}
 	}
-
-	int plus = PieceScore[s][N][to] - PieceScore[s][N][from];
-	if (plus > 0)
-		g->score += plus;
+	BITBOARD b1 = bit_kq_defends & bit_total_attacked[s] & bit_units[xs];
+	if (bit_moves[N][to] & (bit_attackable[N] | b1))
+	{
+		g->score += 40 + ATTACK_SCORE;
+		g->flags |= ATTACK;
+	}
+	g->score += bonus;
 }
 
-void AddBishopMove(const int s, const int xs, const int from, const int to, const int bonus)
+void AddBishopMove(const int s, const int xs, const int from, const int to, const int bonus, const BITBOARD tied)
 {
 	g = &move_list[move_count++];
 	g->flags = 0;
@@ -482,27 +611,61 @@ void AddBishopMove(const int s, const int xs, const int from, const int to, cons
 	g->score = hist_from[s][B][from] + hist_to[s][B][to];
 
 	if (mask[to] & bit_weaker[xs][B] ||
-		(bit_total_attacks[xs] & mask[to] && !(mask[to] & bit_defend_to[s][B])))
+		(bit_total_attacked[xs] & mask[to] && !(mask[to] & bit_defend_to[s][B])))
 	{
-		g->score = -3 * EN_PRISE_SCORE;
+		g->score = -EN_PRISE_MINOR;
 	}
 	else
 	{
-		int plus = PieceScore[s][B][to] - PieceScore[s][B][from];
-		if (plus > 0)
-			g->score += plus;
-		BITBOARD b1 = MagicBishopAttacks(to, bit_all) & (bit_attackable[B] | bit_kq_defends) & ~bit_bishopmoves[from];
-		if (b1)
+		if (tied & ~bit_total_weaker[s] && (!(bit_moves[B][to] & tied & ~bit_total_weaker[s])))
 		{
-			int sq = NextBit(b1);
-			g->score += piece_value[b[sq]] + ATTACK_SCORE;
-			g->flags |= ATTACK;
+			g->score = -EN_PRISE_SCORE;
 		}
-		g->score += bonus;
+		BITBOARD b1 = bit_defendable;
+		while (b1)
+		{
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if (bit_moves[B][to] & mask[square] &&
+				!(bit_between[to][square] & bit_all) &&
+				!(bit_moves[B][from] & mask[square] &&
+					!(bit_between[from][square] & bit_all)))
+			{
+				g->score += DEFEND_SCORE + piece_value[b[square]];
+			}
+		}
+		if (bit_defendable && mask[from] & bit_unblock && !(mask[to] & bit_unblock))
+		{
+			int sq = unblock[from];
+			g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+		}
+		if (mask[to] & bit_line)
+		{
+			g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+		}
 	}
+	BITBOARD b1 = MagicBishopAttacks(to, bit_all) &
+		(bit_attackable[B] | (bit_kq_defends & bit_total_attacked[s] & bit_units[xs])) & ~bit_moves[B][from];
+	if (b1)
+	{
+		/*
+		if (b1 & ~bit_attackable[B])
+		{
+			PrintBitBoard(bit_kq_defends & bit_units[xs]);
+			PrintBitBoard(bit_total_attacked[s]);
+			printf("kq ");
+			Alg(from, to);
+			z();
+		}
+		*/
+		int sq = NextBit(b1);
+		g->score += piece_value[b[sq]] + ATTACK_SCORE;
+		g->flags |= ATTACK;
+	}
+	g->score += bonus;
 }
 
-void AddRookMove(const int s, const int xs, const int from, const int to, const int bonus)
+void AddRookMove(const int s, const int xs, const int from, const int to, const int bonus, const BITBOARD tied)
 {
 	g = &move_list[move_count++];
 	g->flags = 0;
@@ -511,27 +674,56 @@ void AddRookMove(const int s, const int xs, const int from, const int to, const 
 	g->score = hist_from[s][R][from] + hist_to[s][R][to];
 
 	if (mask[to] & bit_weaker[xs][R] ||
-		(bit_total_attacks[xs] & mask[to] && !(mask[to] & bit_defend_to[s][R]) && !(RookAttack(s, from, to))))
+		(bit_total_attacked[xs] & mask[to] &&
+			!(mask[to] & bit_defend_to[s][R]) &&
+			!RookQueenAttack(s, from, to)))
 	{
-		g->score = -2 * EN_PRISE_SCORE;
+		g->score = -EN_PRISE_ROOK;
 	}
 	else
 	{
-		BITBOARD b1 = MagicRookAttacks(to, bit_all) & (bit_attackable[R] | bit_kq_defends);
-		if (b1)
+		BITBOARD b1 = bit_defendable;
+		while (b1)
 		{
-			int sq = NextBit(b1);
-			g->score += piece_value[b[sq]] + ATTACK_SCORE;
-			g->flags |= ATTACK;
-			//PrintBitBoard(b1);
-			//Alg(from, to);
-			//z();
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if (bit_moves[R][to] & mask[square] &&
+				!(bit_between[to][square] & bit_all) &&
+				!(bit_moves[R][from] & mask[square] &&
+					!(bit_between[from][square] & bit_all)))
+			{
+				g->score += DEFEND_SCORE + piece_value[b[square]];
+			}
 		}
-		g->score += bonus;
+		if (bit_defendable && mask[from] & bit_unblock && !(mask[to] & bit_unblock))
+		{
+			int sq = unblock[from];
+			g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+		}
+		b1 = tied & ~bit_total_weaker[s] & ~bit_moves[R][to];
+		while (b1)
+		{
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if (!(MagicRookAttacks(square, bit_all) & bit_pieces[s][R] & ~mask[from]))
+			{
+				g->score += -EN_PRISE_SCORE - piece_value[b[square]];
+			}
+		}
 	}
+
+	BITBOARD b1 = MagicRookAttacks(to, bit_all) &
+		(bit_attackable[R] | (bit_kq_defends & bit_total_attacked[s] & bit_units[xs])) & ~bit_moves[R][from];
+	if (b1)
+	{
+		int sq = NextBit(b1);
+		g->score += piece_value[b[sq]] + ATTACK_SCORE;
+		g->flags |= ATTACK;
+	}
+	g->score += bonus;
 }
 
-void AddQueenMove(const int s, const int xs, const int from, const int to, const int bonus)
+void AddQueenMove(const int s, const int xs, const int from, const int to, const int bonus, const BITBOARD tied)
 {
 	g = &move_list[move_count++];
 	g->flags = 0;
@@ -540,23 +732,72 @@ void AddQueenMove(const int s, const int xs, const int from, const int to, const
 	g->score = hist_from[s][Q][from] + hist_to[s][Q][to];
 
 	if (mask[to] & bit_weaker[xs][Q] ||
-		(bit_weaker[xs][K] & mask[to] && !(mask[to] & bit_defend_to[s][Q])))
+		(bit_total_attacked[xs] & mask[to] && !(mask[to] & bit_defend_to[s][Q])))
 	{
-		g->score = -9 * EN_PRISE_SCORE;
+		g->score = -EN_PRISE_QUEEN;
 	}
 	else
 	{
-		int plus = PieceScore[s][Q][to] - PieceScore[s][Q][from];
-		if (plus > 0)
-			g->score += plus;
-		BITBOARD b1 = MagicQueenAttacks(to, bit_all) & (bit_attackable[Q] | bit_kq_defends);
+		if (tied & ~bit_total_weaker[s] && !(MagicQueenAttacks(to, bit_all & ~mask[from]) & tied))
+		{
+			g->score = -EN_PRISE_SCORE;
+		}
+		BITBOARD b1 = bit_defendable & ~mask[from];
+		while (b1)
+		{
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if (bit_moves[Q][to] & mask[square] &&
+				!(bit_between[to][square] & bit_all) &&
+				!(bit_moves[Q][from] & mask[square] &&
+					!(bit_between[from][square] & bit_all)))
+			{
+				g->score += DEFEND_SCORE + piece_value[b[square]];
+			}
+		}
+		b1 = MagicQueenAttacks(to, bit_all) &
+			(bit_attackable[Q] | (bit_kq_defends & bit_total_attacked[s] & bit_units[xs])) & ~bit_moves[Q][from];
 		if (b1)
 		{
 			int sq = NextBit(b1);
 			g->score += piece_value[b[sq]] + ATTACK_SCORE;
 			g->flags |= ATTACK;
 		}
+		g->score += kingqueen[to][kingloc[xs]] - kingqueen[from][kingloc[xs]];//
 		g->score += bonus;
+	}
+}
+
+void AddKingMove(const int s, const int xs, const int from, const int to)
+{
+	g = &move_list[move_count++];
+	g->flags = 0;
+	g->from = from;
+	g->to = to;
+	g->score = hist_from[s][K][from] + hist_to[s][K][to];
+
+	BITBOARD b1 = bit_moves[K][from] & bit_units[s] & ~bit_defend_to[s][K] & bit_total_attacked[xs] & ~bit_total_weaker[s];
+	b1 &= ~bit_moves[K][to];
+	if (b1)
+	{
+		g->score = -EN_PRISE_SCORE;
+	}
+	b1 = bit_defendable;
+	while (b1)
+	{
+		int square = NextBit(b1);
+		b1 &= b1 - 1;
+		if ((bit_moves[K][to] & mask[square]) &&
+			!(bit_moves[K][from] & mask[square]))
+		{
+			g->score += DEFEND_SCORE + piece_value[b[square]];
+			continue;
+		}
+	}
+	if (bit_moves[K][to] & bit_units[xs] & bit_undefended_squares[xs])
+	{
+		g->score += 40 + ATTACK_SCORE;
+		g->flags |= ATTACK;
 	}
 }
 
@@ -577,7 +818,7 @@ void GenPromote(const int s, const int xs, const int from, const int to)
 				g->flags |= CAPTURE;
 			}
 			if (i == Q)//other types could be added
-				if (bit_queenmoves[to] & bit_pieces[xs][K] &&
+				if (bit_moves[Q][to] & bit_pieces[xs][K] &&
 					!(bit_between[to][kingloc[xs]] & (bit_all ^ mask[from])))
 				{
 					g->flags |= CHECK;
@@ -597,7 +838,7 @@ void GenPromote(const int s, const int xs, const int from, const int to)
 		}
 		g->from = from;
 		g->to = to;
-		if (bit_queenmoves[to] & bit_pieces[xs][K] &&
+		if (bit_moves[Q][to] & bit_pieces[xs][K] &&
 			!(bit_between[to][kingloc[xs]] & (bit_all ^ mask[from])))
 		{
 			g->flags |= CHECK;
@@ -649,80 +890,101 @@ void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(
 			}
 		}
 	}
-
+	
 	if (s == 0) {
-		if (castle & 1 && !(bit_e1h1 & bit_all) && Attack(1u, F1) == 0)
+		if (castle & CASTLE_WK && !(bit_e1h1 & bit_all) && Attack(1, F1, bit_all) == 0 && Attack(1, G1, bit_all) == 0)
 			AddCastle(E1, G1);
-		if (castle & 2 && !(bit_e1a1 & bit_all) && Attack(1u, D1) == 0)
+		if (castle & CASTLE_WQ && !(bit_e1a1 & bit_all) && Attack(1, D1, bit_all) == 0 && Attack(1, C1, bit_all) == 0)
 			AddCastle(E1, C1);
 	}
 	else {
-		if (castle & 4 && !(bit_e8h8 & bit_all) && Attack(0, F8) == 0)
+		if (castle & CASTLE_BK && !(bit_e8h8 & bit_all) && Attack(0, F8, bit_all) == 0 && Attack(0, G8, bit_all) == 0)
 			AddCastle(E8, G8);
-		if (castle & 8 && !(bit_e8a8 & bit_all) && Attack(0, D8) == 0)
+		if (castle & CASTLE_BQ && !(bit_e8a8 & bit_all) && Attack(0, D8, bit_all) == 0 && Attack(0, C8, bit_all) == 0)
 			AddCastle(E8, C8);
 	}
 
 	for (int x = 0; x < total[s][N]; x++)
 	{
-		int bonus = 0;
 		int from = pieces[s][N][x];
 		if (mask[from] & pin_mask)
 		{
 			continue;
 		}
-		if (mask[from] & bit_total_attacks[xs])
+		int bonus = 0;
+		if (target_bonus[from])
 		{
-			if (mask[from] & bit_undefended[s])
+			bonus = ESCAPE_SCORE + target_bonus[from];
+		}
+
+		BITBOARD b1 = bit_moves[N][from] & bit_units[s] & ~bit_defend_to[s][N] & bit_total_attacked[xs] & ~bit_total_weaker[s];
+		while (b1)
+		{
+			int square = NextBit(b1);
+			b1 &= b1 - 1;
+			if (!(bit_moves[N][square] & bit_pieces[s][N] & ~mask[from]))
 			{
-				bonus += ESCAPE_SCORE + B_VALUE;
-			}
-			else if (mask[from] & bit_weaker[xs][N])
-			{
-				bonus += ESCAPE_SCORE + 200;
+				bonus += -EN_PRISE_SCORE - piece_value[b[square]];
 			}
 		}
 
-		BITBOARD b1 = bit_knightmoves[from] & ~bit_all & ~bit_check[N];
+		b1 = bit_moves[N][from] & ~bit_all & ~bit_check[N];
 		while (b1)
 		{
 			int to = NextBit(b1);
 			b1 &= b1 - 1;
-			if (mask[to] & bit_weaker[xs][N])
-			{
-				bonus = -bonus;
-			}
 			AddKnightMove(s, xs, from, to, bonus);
 		}
 	}
 
-	if (pin_mask != 0)
+	if (pin_mask == 0)
 	{
+		for (int x = 0; x < total[s][B]; x++)
+		{
+			BishopMoves(s, xs, pieces[s][B][x], bit_check[B]);
+		}
+		for (int x = 0; x < total[s][R]; x++)
+		{
+			RookMoves(s, xs, pieces[s][R][x], x, bit_check[R]);
+		}
 		for (int x = 0; x < total[s][Q]; x++)
 		{
-			int from = pieces[s][Q][x];
+			QueenMoves(s, xs, pieces[s][Q][x], x, bit_check[Q]);
+		}
+	}
+	else
+	{
+		for (int x = 0; x < total[s][B]; x++)
+		{
+			int from = pieces[s][B][x];
+
 			if (mask[from] & pin_mask)
 			{
-				BITBOARD bit_pin = bit_after[king][from] & pin_mask;
-				assert(bit_pin != 0);
-				int pinner = NextBit(bit_pin);
-				BITBOARD b1 = bit_between[king][pinner] & not_mask[from] & ~bit_check[Q];
-				while (b1)
+				if (bit_moves[R][king] & mask[from])
 				{
-					int to = NextBit(b1);
-					b1 &= b1 - 1;
-					AddQueenMove(s, xs, from, to, 0);
+					continue;
+				}
+				else
+				{
+					int pinner = NextBit(bit_after[king][from] & pin_mask & bit_units[xs]);
+					BITBOARD b1 = bit_between[king][pinner] & ~mask[from] & ~bit_check[B];
+					while (b1)
+					{
+						int to = NextBit(b1);
+						b1 &= b1 - 1;
+						AddBishopMove(s, xs, from, to, 0, 0);
+					}
 				}
 			}
 			else
-				QueenMoves(s, xs, pieces[s][Q][x], x, bit_check[Q]);
+				BishopMoves(s, xs, pieces[s][B][x], bit_check[B]);
 		}
 		for (int x = 0; x < total[s][R]; x++)
 		{
 			int from = pieces[s][R][x];
 			if (mask[from] & pin_mask)
 			{
-				if (bit_bishopmoves[king] & mask[from])
+				if (bit_moves[B][king] & mask[from])
 				{
 					continue;
 				}
@@ -734,7 +996,7 @@ void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(
 					{
 						int to = NextBit(b1);
 						b1 &= b1 - 1;
-						AddRookMove(s, xs, from, to, 0);
+						AddRookMove(s, xs, from, to, 0, 0);
 					}
 				}
 			}
@@ -743,48 +1005,26 @@ void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(
 				RookMoves(s, xs, pieces[s][R][x], x, bit_check[R]);
 			}
 		}
-		for (int x = 0; x < total[s][B]; x++)
+		for (int x = 0; x < total[s][Q]; x++)
 		{
-			int from = pieces[s][B][x];
+			int from = pieces[s][Q][x];
 			if (mask[from] & pin_mask)
 			{
-				if (bit_rookmoves[king] & mask[from])
+				int pinner = NextBit(bit_after[king][from] & pin_mask & bit_units[xs]);
+				BITBOARD b1 = bit_between[king][pinner] & ~mask[from] & ~bit_check[Q];
+				while (b1)
 				{
-					continue;
-				}
-				else
-				{
-					int pinner = NextBit(bit_after[king][from] & pin_mask);
-					BITBOARD b1 = bit_between[king][pinner] & not_mask[from] & ~bit_check[B];
-					while (b1)
-					{
-						int to = NextBit(b1);
-						b1 &= b1 - 1;
-						AddBishopMove(s, xs, from, to, 0);
-					}
+					int to = NextBit(b1);
+					b1 &= b1 - 1;
+					AddQueenMove(s, xs, from, to, 0, 0);
 				}
 			}
 			else
-				BishopMoves(s, xs, pieces[s][B][x], bit_check[B]);
-		}
-	}
-	else
-	{
-		for (int x = 0; x < total[s][Q]; x++)
-		{
-			QueenMoves(s, xs, pieces[s][Q][x], x, bit_check[Q]);
-		}
-		for (int x = 0; x < total[s][R]; x++)
-		{
-			RookMoves(s, xs, pieces[s][R][x], x, bit_check[R]);
-		}
-		for (int x = 0; x < total[s][B]; x++)
-		{
-			BishopMoves(s, xs, pieces[s][B][x], bit_check[B]);
-		}
+				QueenMoves(s, xs, pieces[s][Q][x], x, bit_check[Q]);
+		}		
 	}
 
-	BITBOARD b1 = bit_kingmoves[king] & ~bit_all & ~bit_weaker[xs][K];
+	BITBOARD b1 = bit_moves[K][king] & ~bit_all & ~bit_total_attacked[xs];
 	while (b1)
 	{
 		int to = NextBit(b1);
@@ -792,77 +1032,66 @@ void GenQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(
 		AddKingMove(s, xs, king, to);
 	}
 	first_move[ply + 1] = move_count;
-}
 
-void RookMoves(const int s, const int xs, const int from, const int n, const BITBOARD bit_check_squares)
-{
-	int bonus = 0;
-	if (mask[from] & bit_total_attacks[xs])
-	{
-		if (mask[from] & bit_undefended[s])
-		{
-			bonus = ESCAPE_SCORE + 500;
-		}
-		else if (mask[from] & bit_weaker[xs][R])
-		{
-			bonus = ESCAPE_SCORE + B_VALUE;
-		}
-	}
-	BITBOARD b1 = bit_rookattacks[s][n] & ~bit_all & ~bit_check_squares;
-	while (b1)
-	{
-		int to = NextBit(b1);
-		b1 &= b1 - 1;
-		AddRookMove(s, xs, from, to, bonus);
-	}
 }
 
 void BishopMoves(const int s, const int xs, const int from, const BITBOARD bit_check_squares)
 {
 	int bonus = 0;
-
-	if (mask[from] & bit_total_attacks[xs])
+	if (target_bonus[from])
 	{
-		if (mask[from] & bit_undefended[s])
-		{
-			bonus = ESCAPE_SCORE + B_VALUE;
-		}
-		else if (mask[from] & bit_weaker[xs][B])
-		{
-			bonus = ESCAPE_SCORE + 200;
-		}
+		bonus = ESCAPE_SCORE + target_bonus[from];
 	}
+	BITBOARD b1 = slider_moves[from][ply] & ~bit_all & ~bit_check_squares;
+	BITBOARD tied = bit_moves[B][from] & bit_attacked[s][B] & bit_units[s] & ~bit_defend_to[s][B] & bit_total_attacked[xs];
 
-	BITBOARD b1 = bit_attacked[s][B] & bit_bishopmoves[from] & ~bit_all & ~bit_check_squares;
 	while (b1)
 	{
 		int to = NextBit(b1);
 		b1 &= b1 - 1;
-		AddBishopMove(s, xs, from, to, bonus);
+		AddBishopMove(s, xs, from, to, bonus, tied);
 	}
 }
 
-void QueenMoves(const int s, const int xs, const int x, const int n, const BITBOARD bit_check_squares)
+void RookMoves(const int s, const int xs, const int from, const int n, const BITBOARD bit_check_squares)
 {
 	int bonus = 0;
-	if (mask[x] & bit_undefended[s] || mask[x] & bit_weaker[xs][Q])
+	if (target_bonus[from])
 	{
-		bonus = ESCAPE_SCORE + 900;
+		bonus = ESCAPE_SCORE + target_bonus[from];
 	}
-	BITBOARD b1 = bit_queenattacks[s][n] & ~bit_all & ~bit_check_squares;
+	BITBOARD b1 = slider_moves[from][ply] & ~bit_all & ~bit_check_squares;
+	BITBOARD tied = bit_attacked[s][R] & bit_units[s] & ~bit_defend_to[s][R] & bit_total_attacked[xs];
 	while (b1)
 	{
 		int to = NextBit(b1);
 		b1 &= b1 - 1;
-		AddQueenMove(s, xs, x, to, bonus);
+		AddRookMove(s, xs, from, to, bonus, tied);
+	}
+}
+
+void QueenMoves(const int s, const int xs, const int from, const int n, const BITBOARD bit_check_squares)
+{
+	int bonus = 0;
+	if (target_bonus[from])
+	{
+		bonus = ESCAPE_SCORE + target_bonus[from];
+	}
+	BITBOARD b1 = slider_moves[from][ply] & ~bit_all & ~bit_check_squares;
+	BITBOARD tied = bit_attacked[s][Q] & bit_units[s] & ~bit_defend_to[s][Q] & bit_total_attacked[xs];
+	while (b1)
+	{
+		int to = NextBit(b1);
+		b1 &= b1 - 1;
+		AddQueenMove(s, xs, from, to, bonus, tied);
 	}
 }
 
 BITBOARD DiscoPossible(const int s, const int xs)
 {
 	const int king = kingloc[xs];
-	BITBOARD b1 = bit_rookmoves[king] & (bit_pieces[s][R] | bit_pieces[s][Q]);
-	b1 |= bit_bishopmoves[king] & (bit_pieces[s][B] | bit_pieces[s][Q]);
+	BITBOARD b1 = bit_moves[R][king] & (bit_pieces[s][R] | bit_pieces[s][Q]);
+	b1 |= bit_moves[B][king] & (bit_pieces[s][B] | bit_pieces[s][Q]);
 	return b1;
 }
 
@@ -871,7 +1100,7 @@ BITBOARD GenChecks(const int s, const int xs, BITBOARD pin_mask)
 	move_count = first_move[ply + 1];
 
 	int to, from;
-	const int king = kingloc[xs];
+	const int xking = kingloc[xs];
 
 	memset(bit_disco_squares, 0, sizeof(bit_disco_squares));
 
@@ -881,107 +1110,80 @@ BITBOARD GenChecks(const int s, const int xs, BITBOARD pin_mask)
 
 	BITBOARD bit_disco = DiscoPossible(s, xs);
 
-	if (bit_disco)
+	BITBOARD bit_bishop_checks = MagicBishopAttacks(xking, bit_all) & ~bit_all;
+	BITBOARD bit_rook_checks = MagicRookAttacks(xking, bit_all) & ~bit_all;
+	BITBOARD bit_queen_checks = bit_bishop_checks | bit_rook_checks & ~bit_all;
+
+	while (bit_disco)
 	{
-		for (int x = 0; x < total[s][B]; x++)
+		from = NextBit(bit_disco);
+		bit_disco &= bit_disco - 1;
+		BITBOARD between = bit_between[from][xking];
+		if (!(between & bit_units[xs]) && IsOneBit(between & bit_units[s]))
 		{
-			from = pieces[s][B][x];
-			if (bit_bishopmoves[from] & mask[king])
-				if (!(bit_between[from][king] & bit_units[xs]) && IsOneBit(bit_between[from][king] & bit_units[s]))
-				{
-					int sq2 = NextBit(bit_between[from][king] & bit_units[s]);
-					GenDisco(sq2, bit_between[from][king]);
-					bit_disco_pieces |= mask[sq2];
-				}
-		}
-		for (int x = 0; x < total[s][R]; x++)
-		{
-			from = pieces[s][R][x];
-			if (bit_rookmoves[from] & mask[king])
-				if (!(bit_between[from][king] & bit_units[xs]) && IsOneBit(bit_between[from][king] & bit_units[s]))
-				{
-					int sq2 = NextBit(bit_between[from][king] & bit_units[s]);
-					GenDisco(sq2, bit_between[from][king]);
-					bit_disco_pieces |= mask[sq2];
-				}
-		}
-		for (int x = 0; x < total[s][Q]; x++)
-		{
-			from = pieces[s][Q][x];
-			if (bit_queenmoves[from] & mask[king])
-			{
-				if (!(bit_between[from][king] & bit_units[xs]) && IsOneBit(bit_between[from][king] & bit_units[s]))
-				{
-					if (!(col[from] == col[king] && bit_between[from][king] & bit_pieces[s][0]))
-					{
-						int sq2 = NextBit(bit_between[from][king] & bit_units[s]);
-						GenDisco(sq2, bit_between[from][king]);
-						bit_disco_pieces |= mask[sq2];
-					}
-				}
-			}
+			int sq2 = NextBit(between & bit_units[s]);
+			GenDisco(sq2, between, pin_mask);
+			bit_disco_pieces |= mask[sq2];
 		}
 	}
 
-	const int k = kingloc[s];
+	const int king = kingloc[s];
 
 	if (s == 0)
 		b1 = (bit_pieces[0][0] << 8) & ~bit_all;
 	else
 		b1 = (bit_pieces[1][0] >> 8) & ~bit_all;
 
-	b2 = b1 & bit_pawncaptures[xs][king];
+	b2 = b1 & bit_pawncaptures[xs][xking];
 	while (b2)
 	{
-		int sq2 = NextBit(b2);
+		int to = NextBit(b2);
 		b2 &= b2 - 1;
-		to = pawnplus[xs][sq2];
-		if (mask[to] & bit_disco_pieces)
+		from = pawnplus[xs][to];
+		if (mask[from] & pin_mask)
 			continue;
-		AddCheck(to, sq2, P);
+		AddCheck(from, to, P);
 	}
-	if (row2[xs][king] == 3)
+	if (row2[xs][xking] == 3)
 	{
 		if (s == 0)
 		{
 			b1 = ((bit_pieces[0][0] & mask_ranks[0][1]) << 8) & ~bit_all;
 			b2 = (b1 << 8) & ~bit_all;
-			b3 = b2 & bit_pawncaptures[xs][king];
+			b3 = b2 & bit_pawncaptures[xs][xking];
 		}
 		else
 		{
 			b1 = ((bit_pieces[1][0] & mask_ranks[1][1]) >> 8) & ~bit_all;
 			b2 = (b1 >> 8) & ~bit_all;
-			b3 = b2 & bit_pawncaptures[xs][king];
+			b3 = b2 & bit_pawncaptures[xs][xking];
 		}
 		while (b3)
 		{
-			int sq2 = NextBit(b3);
+			int to = NextBit(b3);
 			b3 &= b3 - 1;
-			to = pawndouble[xs][sq2];
-			if (mask[to] & bit_disco_pieces)
+			from = pawndouble[xs][to];
+			if (mask[from] & pin_mask)
 				continue;
 			int score = check_history[P][to];
 			score += CHECK_SCORE;
-			AddCheck(to, sq2, P);
+			AddCheck(from, to, P);
 		}
 	}
 
-	for (int x = 0; x < total[s][N]; x++)
+	b1 = bit_pieces[s][N] & ~pin_mask & ~bit_disco_pieces;
+	while (b1)
 	{
-		from = pieces[s][N][x];
-		if (mask[from] & (pin_mask | bit_disco_pieces))
-		{
-			continue;
-		}
-		b2 = bit_knightmoves[from] & bit_knightmoves[king] & ~bit_all;
+		from = NextBit(b1);
+		b1 &= b1 - 1;
+		b2 = bit_moves[N][from] & bit_moves[N][xking] & ~bit_all;
 		while (b2)
 		{
 			to = NextBit(b2);
 			b2 &= b2 - 1;
 			int score = check_history[N][to];
 			score += CHECK_SCORE;
-			if (bit_knightmoves[to] & (bit_pieces[xs][R] | bit_pieces[xs][Q]))
+			if (bit_moves[N][to] & (bit_pieces[xs][R] | bit_pieces[xs][Q]))
 			{
 				score += 25;
 			}
@@ -993,86 +1195,84 @@ BITBOARD GenChecks(const int s, const int xs, BITBOARD pin_mask)
 	{
 		from = pieces[s][B][x];
 		if (mask[from] & (pin_mask | bit_disco_pieces))
-			if (bit_rookmoves[k] & mask[from])
+		{
+			if (bit_moves[R][king] & mask[from])
 			{
 				continue;
 			}
-		if (!(bit_bishopmoves[from] & mask[king]))
+			if (mask[from] & bit_disco_pieces)
+			{
+				continue;
+			}
+		}
+		if (!(bit_moves[B][from] & mask[xking]))
 		{
-			b1 = bit_bishopmoves[from] & bit_bishopmoves[king];
+			b1 = slider_moves[from][ply] & bit_bishop_checks;
 			while (b1)
 			{
 				to = NextBit(b1);
-				if (!(mask[to] & bit_all))
+				if (!(mask[from] & pin_mask) || !(LineAttack(xs, king, bit_all & ~mask[from])))
 				{
-					if (!((bit_between[from][to] | bit_between[to][king]) & bit_all))
-					{
-						int score = check_history[B][to];
-						score += CHECK_SCORE;
-						AddCheck(from, to, score);
-					}
+					int score = check_history[B][to];
+					score += CHECK_SCORE;
+					AddCheck(from, to, score);
 				}
 				b1 &= b1 - 1;
 			}
 		}
 	}
-
 	for (int x = 0; x < total[s][R]; x++)
 	{
 		from = pieces[s][R][x];
 		if (mask[from] & (pin_mask | bit_disco_pieces))
-			if (bit_bishopmoves[k] & mask[from])
+		{		
+			if (bit_moves[B][king] & mask[from])
 			{
 				continue;
 			}
-		if (!(bit_rookmoves[from] & mask[king]))
-		{
-			to = h_check[from][king];
-			if (to > -1)
+			if (mask[from] & bit_disco_pieces)
 			{
-				if (!((bit_between[from][to] | mask[to] | bit_between[to][king]) & bit_all))
-				{
-					int score = check_history[R][to];
-					score += CHECK_SCORE;
-					AddCheck(from, to, score);
-				}
+				continue;
 			}
-			to = v_check[from][king];
-			if (to > -1)
+		}
+		if (!(bit_moves[R][from] & mask[xking]))
+		{
+			b1 = slider_moves[from][ply] & bit_rook_checks;
+			while (b1)
 			{
-				if (!((bit_between[from][to] | mask[to] | bit_between[to][king]) & bit_all))
+				to = NextBit(b1);
+				if (!(mask[from] & pin_mask) || !(LineAttack(xs, king, bit_all & ~mask[from])))
 				{
 					int score = check_history[R][to];
 					score += CHECK_SCORE;
 					AddCheck(from, to, score);
 				}
+				b1 &= b1 - 1;
 			}
 		}
 	}
-
 	for (int x = 0; x < total[s][Q]; x++)
 	{
 		from = pieces[s][Q][x];
-		int z1 = 1;
-		to = q_check[from][king][0];
-		while (to > -1)
+		BITBOARD b1 = slider_moves[from][ply] & bit_queen_checks;
+		while (b1)
 		{
-			if (!((bit_between[from][to] | mask[to] | bit_between[to][king]) & bit_all))
+			int to = NextBit(b1);
+			b1 &= b1 - 1;
+			if (!(mask[from] & pin_mask) || !(LineAttack(xs, king, bit_all & ~mask[from] | mask[to])))
 			{
 				int score = check_history[Q][to];
 				score += CHECK_SCORE;
-				if (difference[king][to] == 2 && bit_rookmoves[to] & mask[king])
+				if (difference[xking][to] == 2 && bit_moves[R][to] & mask[xking])
 					score += 50;
-				else if (bit_kingmoves[king] & mask[to])
+				else if (bit_moves[K][xking] & mask[to])
 				{
-					if (colors[king] == colors[to])
+					if (colors[xking] == colors[to])
 						score += 550;
 					else
 						score += 650;
 				}
-				AddCheck(from, to, score);
 			}
-			to = q_check[from][king][z1++];
 		}
 	}
 	first_move[ply + 1] = move_count;
@@ -1080,76 +1280,92 @@ BITBOARD GenChecks(const int s, const int xs, BITBOARD pin_mask)
 	return bit_disco_pieces;
 }
 
-void GenDisco(const int from, const BITBOARD mask_line)
+void GenDisco(const int from, const BITBOARD mask_line, BITBOARD pin_mask)
 {
 	const int piece = b[from];
 	if (piece == N)
 	{
-		BITBOARD b1 = bit_knightmoves[from] & ~bit_all;
-		while (b1)
+		if (!(mask[from] & pin_mask))
 		{
-			int to = NextBit(b1);
-			b1 &= b1 - 1;
-			AddDisco(from, to, N);
+			BITBOARD b1 = bit_moves[N][from] & ~bit_all;
+			while (b1)
+			{
+				int to = NextBit(b1);
+				b1 &= b1 - 1;
+				AddDisco(from, to, N);
+			}
 		}
 		return;
 	}
 	if (piece == B)
 	{
-		BITBOARD b1 = bit_bishopmoves[from] & ~bit_all;
+		BITBOARD b1 = bit_moves[B][from] & ~bit_all;
 		while (b1)
 		{
 			int to = NextBit(b1);
 			b1 &= b1 - 1;
 			if (!(bit_between[from][to] & bit_all))
-				AddDisco(from, to, B);
-			//else
-			//	b1 &= ~bit_after[from][to];
+			{
+				if (!(mask[from] & pin_mask) || !(LineAttack(xside, kingloc[side], bit_all & ~mask[from])))
+				{
+					AddDisco(from, to, R);
+				}
+			}
+			else
+				b1 &= ~bit_after[from][to];
 		}
 		return;
 	}
 	if (piece == R)
 	{
-		BITBOARD b1 = bit_rookmoves[from] & ~bit_all;
+		BITBOARD b1 = bit_moves[R][from] & ~bit_all;
 		while (b1)
 		{
 			int to = NextBit(b1);
 			b1 &= b1 - 1;
 			if (!(bit_between[from][to] & bit_all))
-				AddDisco(from, to, R);
-			//else
-			//	b1 &= ~bit_after[from][to];
+			{
+				if (!(mask[from] & pin_mask) || !(LineAttack(xside, kingloc[side], bit_all & ~mask[from])))
+				{
+					AddDisco(from, to, R);
+				}
+			}
+			else
+				b1 &= ~bit_after[from][to];
 		}
 		return;
 	}
 	if (piece == K)
 	{
-		BITBOARD b1 = bit_kingmoves[from] & ~bit_all & ~mask_line;
+		BITBOARD b1 = bit_moves[K][from] & ~bit_all & ~mask_line;
 		while (b1)
 		{
 			int to = NextBit(b1);
 			b1 &= b1 - 1;
-			if (!(Attack(xside, to)))
+			if (!(Attack(xside, to, bit_all)))
 				AddDisco(from, to, K);
 		}
 		return;
 	}
 	if (piece == P)
 	{
-		int to = pawnplus[side][from];
-		if (row2[side][to] != 7)
+		if (!(mask[from] & pin_mask))
 		{
-			if (!(mask_line & mask[to]))
+			int to = pawnplus[side][from];
+			if (row2[side][to] != 7)
 			{
-				if (b[to] == EMPTY)
+				if (!(mask_line & mask[to]))
 				{
-					AddDisco(from, to, P);
-					if (row2[side][from] == 1)
+					if (b[to] == EMPTY)
 					{
-						int sq2 = pawnplus[side][to];
-						if (b[sq2] == EMPTY)
+						AddDisco(from, to, P);
+						if (row2[side][from] == 1)
 						{
-							AddDisco(from, to, P);
+							int sq2 = pawnplus[side][to];
+							if (b[sq2] == EMPTY)
+							{
+								AddDisco(from, to, P);
+							}
 						}
 					}
 				}
@@ -1170,10 +1386,6 @@ void AddCheck(const int from, const int to, const int score)
 
 void AddDisco(const int from, const int to, const int piece)
 {
-	assert(b[from] < 6);
-	assert(b[to] == 6);
-	assert(piece < 6);
-
 	g = &move_list[move_count++];
 	g->flags = CHECK | DISCO;
 	g->from = from;
