@@ -12,8 +12,6 @@ using namespace std;
 
 void SortBlunders(int left, int right);
 
-//void GenLastQuietMoves(const int s, const int xs, BITBOARD pin_mask, const BITBOARD(&bit_check)[6]);
-
 void AddCont(const int startmoves, const int endmoves);
 int SafeKingMoves(const int s, const int xs);
 bool IsAnyMoves(const int s, const BITBOARD pin_mask);
@@ -38,8 +36,6 @@ BITBOARD bit_undefendable;
 BITBOARD bit_defendable;
 BITBOARD bit_unblock;
 BITBOARD bit_line;
-
-//ofstream file("debug.txt");
 
 int target_bonus[64];
 
@@ -98,8 +94,8 @@ extern int test_mode;
 U64 qnodes;
 U64 all_nodes;
 
-constexpr int ALPHA_THRESHOLD = 100;// 150;
-constexpr int BETA_THRESHOLD = 100;// 150;// 150;
+constexpr int ALPHA_THRESHOLD = 100;
+constexpr int BETA_THRESHOLD = 100;
 
 constexpr int  NO_PV = 0;
 constexpr int  PV = 1;
@@ -146,7 +142,7 @@ static int debug;
 
 int c_nodes[MAX_PLY];
 
-int reduce[MAX_PLY];//
+int reduce[MAX_PLY];
 
 #include <setjmp.h>
 static jmp_buf env;
@@ -585,11 +581,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	{
 		return 0;
 	}
-	if (fifty >= 10 && piece_mat[0] <= 300 && piece_mat[1] <= 300)
-	{
-		//printf("+");
-		//return 0;
-	}
 	if (fifty >= 100)
 	{
 		return 0;
@@ -874,17 +865,10 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 		{
 			if (diff >= ALPHA_THRESHOLD)
 			{
-				//if (count)
-				//return alpha;
 				if (end > first_move[ply])
-					//z();
-					//printf("+");
 					return alpha;
 			}
 		}
-		//10 148 26 133269 c8c3 g3h4 d8d2 e2d2 b7e4 d2g2 e4g2 h1g2 c3c2 g2f3
-		//10 148 24 132642 c8c3 g3h4 d8d2 e2d2 b7e4 d2g2 e4g2 h1g2 c3c2 g2f3
-
 		for (int i = start; i < end; i++)
 		{
 			top = SelectMove(i, top, end);
@@ -1041,12 +1025,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 			val_to = piece_value[b[to]];
 			capture_score = val_to;
-			//12 36 46 928794 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
-			//12 86 47 945387 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
-			//12 36 44 921753 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
-			//	12 86 45 938300 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
-			//12 36 40 896984 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
-			//12 86 41 913499 d3h7 g8h7 e2h5 h7g8 b2g7 g8g7 h5g4 g7h6 f1f3 e7h4 g4h4 h6g6
 		
 			if (lowest > -1)
 			{
@@ -1249,8 +1227,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 		}
 	}
 
-	//ShowAll(ply);
-
 	for (int i = startchecks; i < endchecks; i++)
 	{
 		SelectCheck(i, endchecks);
@@ -1441,9 +1417,7 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 
 	const int startmoves = first_move[ply + 1];
 	int quiet_count = 0;
-	//if(depth==1)
-	//	GenLastQuietMoves(side, xside, pin_mask, bit_check_squares);
-	//else
+	
 	GenQuietMoves(side, xside, pin_mask, bit_check_squares);
 
 	if (bit_disco_pieces)
@@ -1468,25 +1442,11 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 	}
 
 	int blunder_start = 0;
-	//*/
-
 	int left = startmoves;
 	int right = endmoves - 1;
 	SortBlunders(left, right);
-
-	/*
-	for (int i = startmoves; i < endmoves; i++)
-	{
-		Alg(move_list[i].from, move_list[i].to);
-		printf(" score %d \n", move_list[i].score);
-	}
-	Alg(move_list[left].from, move_list[left].to);
-	printf(" score %d \n", move_list[left].score);
-	z();
-	/*/
 	blunder_start = left;
 	endmoves = blunder_start;
-	//*/
 
 	top = HASH_SCORE;
 
@@ -1626,15 +1586,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 		{
 			if (score >= beta)
 			{
-				/*/
-				if (quiet_count > 10 && depth>2)//depth == 1 && bit_targets > 0 && score < 0)//>2
-				{
-					cout << quiet_count << endl;
-					Alg(from, to);
-					ShowAll(ply);
-					_getch();
-				}
-				/*/
 				UpdateContinuation(depth, from, to);
 				UpdateHistory(i, from, to, score, depth);
 				AddHash(side, depth, score, BETA, from, to, flags);
@@ -1658,12 +1609,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			alpha = score;
 		}
 	}
-	//
-	//
-	//
-	//
-	//
-	//
 
 	if (blunder_start > 0)
 	{
@@ -1804,23 +1749,6 @@ int Search(int alpha, int beta, int depth, int pvs, int null)
 			{
 				if (score >= beta)
 				{
-					//
-					if (depth > 2)
-					{
-						//Alg(from, to);
-						//ShowAll(ply);
-						//_getch();
-					}
-					/*/
-					if (quiet_count > 10 && depth > 2)//depth == 1 && bit_targets > 0 && score < 0)//>2
-					{
-						cout << quiet_count << endl;
-						Alg(from, to);
-						ShowAll(ply);
-						_getch();
-					}
-					/*/
-					//
 					UpdateContinuation(depth, from, to);
 					UpdateHistory(i, from, to, score, depth);
 					AddHash(side, depth, score, BETA, from, to, flags);
@@ -1881,6 +1809,3 @@ void SortBlunders(int left, int right)
 		}
 	}
 }
-
-//22 113 22569 546305295 c1f4 b8d7 e1h4 h7h5 g5e4 d8f8 f1e1 c5c4 b5d7 c7d7 e4d6 d7d6 e1e5 d6d8 h4f2 c8b7 d5d6 b7g2 f2g2 d8d6
-//23 163 73932 1874170821 g5h7 g8h7 e1h4 h7g8 c1h6 c8g4 h6g7 g4h5 h4g5 e5g4 h2h3 g4f6 g7f6 d8f8 g2g4 h5g4 h3g4 b8d7 b5d7 c7d7 g5h4
