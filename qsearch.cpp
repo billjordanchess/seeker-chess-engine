@@ -22,7 +22,7 @@ int SelectMove(const int from, const int, const int);
 void SelectCapture(const int from, const int last);
 int RecaptureSearch(int s, const int attacker, const int, const int sq, BITBOARD p1, BITBOARD p2);
 
-void z();//
+void z();
 
 BITBOARD GetPinMask(const int s, const int xs);
 
@@ -415,21 +415,12 @@ int RecaptureSearch(int s, const int attacker, const int sq, const int defender,
 			if (IsOneBit(pins[s] & bit_occ & ~bit_units[s ^ 1]))
 			{
 				attack_sq = RecaptureFromPins(s, s ^ 1, sq, bit_occ, pins[s]);
-				//attack_sq = RecaptureFrom(s, s ^ 1, sq, bit_occ, bit_occ & ~pins[s]);
-
-				if (attack_sq > -1)
-				{
-					//PrintBitBoard(pins[s]);
-					//Alg(attack_sq, sq);
-					//z();
-				}
 			}
 			else
 				attack_sq = RecaptureFrom(s, s ^ 1, sq, bit_occ);
 		}
 		else
 			attack_sq = RecaptureFrom(s, s ^ 1, sq, bit_occ);
-		//attack_sq = RecaptureFrom(s, s ^ 1, sq, bit_occ, bit_occ & ~pins[s]);
 
 		if (attack_sq == -1)
 		{
@@ -586,20 +577,3 @@ static bool AttackKing(const int s, const int king, const BITBOARD bit_occ)
 		return true;
 	return false;
 }
-
-/*
-	if (LineAttack2(s^1, kingloc[s], bit_occ | mask[sq]))
-	{
-		if (bit_moves[K][kingloc[s]] & mask[sq])
-		{
-			//if (RecaptureFrom(s^1, s, sq, bit_occ) == -1)
-			{
-				count++;
-				list[count] = kingloc[s];
-				gain[count] = captured_value - gain[count - 1];
-			}
-		}
-		z();
-		break;
-	}
-	*/
