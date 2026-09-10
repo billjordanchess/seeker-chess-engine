@@ -134,24 +134,6 @@ void DisplayPV(int i)
 		UnMakeMove();
 }
 
-void SquareToChars(int sq, char* out)
-{
-	out[0] = char('a' + (sq & 7));
-	out[1] = char('1' + (sq >> 3));
-}
-
-void PrintUciMove(const move_data& m)
-{
-	char buf[6];
-	SquareToChars(m.from, buf);
-	SquareToChars(m.to, buf + 2);
-
-	int n = 4;
-
-	buf[n] = 0;
-	printf("%s", buf);
-}
-
 void UpdateCheckHistory(const int from, const int to, const int x, const int depth)
 {
 	if (check_history[b[from]][to] < HISTORY_LIMIT)
@@ -605,15 +587,11 @@ static void UpdateCont(int& cell, const int bonus)
 	const int G = 32;
 
 	cell -= cell / G;
-	if (cell + bonus < LIMIT && cell + bonus > -LIMIT)//
+	if (cell + bonus < LIMIT && cell + bonus > -LIMIT)
 	{
 		cell += bonus;
 		return;
 	}
-	//if (cell + bonus > LIMIT)
-	//	cell = LIMIT;
-	//else if (cell + bonus < -LIMIT)
-	//	cell = -LIMIT;
 	cell += bonus;
 	cell = Clamp(cell, -LIMIT, LIMIT);
 }
@@ -748,8 +726,6 @@ void GenAllMoves(const int s, const int xs, const BITBOARD pin_mask, const BITBO
 			AddAllMove(from, to, 0);
 	}
 	first_move[ply + 1] = move_count;
-	//if(first_move[ply + 1] > first_move[ply])
-	//z();
 }
 
 void AddAllMove(const int from, const int to, unsigned int flags)
@@ -759,7 +735,6 @@ void AddAllMove(const int from, const int to, unsigned int flags)
 	g->from = from;
 	g->to = to;
 	g->score = 0;
-	//Alg(from, to); printf("\n");
 }
 
 bool IsAnyMoves(const int s, const BITBOARD pin_mask)
