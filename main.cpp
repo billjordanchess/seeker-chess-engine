@@ -25,20 +25,15 @@ void BuildAttackMap();
 
 void GenRoot(const int, const int);
 
-//void uci();
-
 const int White = 0;
 const int  Black = 1;
 
 void ClearContHistory();
 
-//int Train();
-
 string MoveString(int, int, int);
 
 void GenCheck();
 void GenCaptures(const int s, const int xs, BITBOARD pin_mask);
-//void GenQuietMoves(const int, BITBOARD, const BITBOARD(&bit_check)[6]);
 BITBOARD GenChecks(const int, const int, BITBOARD);
 
 void ShowHelp();
@@ -97,7 +92,7 @@ U64 cut = cut_nodes;
 int main()
 {
 	cout << "Seeker Chess Engine 1.0" << endl;
-	cout << "9/9/26" << endl;
+	cout << "11/9/26" << endl;
 	cout << "Bill Jordan 2026" << endl;
 	cout << "FIDE Master and multiple state champion." << endl;
 	cout << "I have published a number of chess books" << endl;
@@ -295,11 +290,6 @@ int main()
 			xside ^= 1;
 			continue;
 		}
-		if (s == "t")
-		{
-			//Train();
-			//continue;
-		}
 		if (s == "undo")
 		{
 			if (!hply)
@@ -316,11 +306,6 @@ int main()
 		if (s == "xboard")
 		{
 			xboard();
-			break;
-		}
-		if (s == "uci")
-		{
-			//uci();
 			break;
 		}
 
