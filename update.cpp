@@ -81,8 +81,6 @@ void RemovePiece(const int s, const int piece, const int sq)
 	const BITBOARD m = ~mask[sq];
 	bit_units[s] &= m;
 	bit_all &= m;
-
-	assert(piece < 6);
 	bit_pieces[s][piece] &= m;
 	AddKey(s, piece, sq);
 	b[sq] = EMPTY;
@@ -90,20 +88,8 @@ void RemovePiece(const int s, const int piece, const int sq)
 	table_score[s] -= PieceScore[s][piece][sq];
 	piece_mat[s] -= piece_value[piece];
 
-	assert(total[s][piece] > 0);
-
 	const int idx = index[sq];
 	const int last = total[s][piece] - 1;
-
-	if (pieces[s][piece][idx] != sq)
-	{
-		//Algebraic(sq);
-		//z();
-	}
-
-	assert(idx >= 0);
-	assert(idx <= last);
-	assert(pieces[s][piece][idx] == sq);
 
 	if (idx != last)
 	{
@@ -319,9 +305,6 @@ void MakeCapture(const int from, const int to, const int flags)
 	side ^= 1;
 	xside ^= 1;
 }
-//10 148 23 131979 c8c3 g3h4 d8d2 e2d2 b7e4 d2g2 e4g2 h1g2 c3c2 g2f3
-//10 148 24 131979 c8c3 g3h4 d8d2 e2d2 b7e4 d2g2 e4g2 h1g2 c3c2 g2f3
-//10 148 24 131867 c8c3 g3h4 d8d2 e2d2 b7e4 d2g2 e4g2 h1g2 c3c2 g2f3
 
 void UnMakeCapture()
 {
