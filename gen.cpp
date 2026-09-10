@@ -102,16 +102,6 @@ void GenCaptures(const int s, const int xs, BITBOARD pin_mask)
 				GenPromote(s, xs, from, to);
 			}
 		}
-		/*
-		b1 = bit_pieces[s][P] & mask_ranks[s][5];
-		while (b1)
-		{
-			const int from = NextBit(b1);
-			b1 &= b1 - 1;
-			if (b[pawnplus[s][from] == EMPTY)
-				AddPawnMove(s, xs, from, pawnplus[s][from]);
-		}
-		*/
 
 		if (s == 0)
 		{
@@ -245,16 +235,6 @@ void GenCaptures(const int s, const int xs, BITBOARD pin_mask)
 					GenPromote(s, xs, from, to);
 				}
 			}
-			/*
-			b1 = bit_pieces[s][P] & mask_ranks[s][5];
-			while (b1)
-			{
-				const int from = NextBit(b1);
-				b1 &= b1 - 1;
-				if (b[pawnplus[s][from] == EMPTY)
-					AddPawnMove(s, xs, from, pawnplus[s][from]);
-			}
-			*/
 
 			if (s == 0)
 			{
@@ -480,7 +460,7 @@ void AddCastle(const int from, const int to)
 	g->flags = CASTLE;
 	g->from = from;
 	g->to = to;
-	g->score = 1000;//
+	g->score = 1000;
 }
 
 void AddCapture(const int from, const int to, const unsigned int flags, const int score)
@@ -539,16 +519,14 @@ void AddPawnMove(const int s, const int xs, const int from, const int to)
 		int square = NextBit(b1);
 		g->score += DEFEND_SCORE + piece_value[b[square]];
 	}
-	//*
 	if (bit_defendable && mask[from] & bit_unblock && (mask[to] & bit_unblock) == 0)
 	{
 		int sq = unblock[from];
-		g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+		g->score += DEFEND_SCORE;
 	}
-	//*/
 	if (mask[to] & bit_line)
 	{
-		g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+		g->score += DEFEND_SCORE;
 	}
 	if (bit_pawncaptures[s][to] & bit_units[xs] & (~bit_pieces[xs][P] | bit_total_attacked[s]))//
 	{
@@ -586,11 +564,11 @@ void AddKnightMove(const int s, const int xs, const int from, const int to, cons
 		if (bit_defendable && mask[from] & bit_unblock)
 		{
 			int sq = unblock[from];
-			g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+			g->score += DEFEND_SCORE;
 		}
 		if (mask[to] & bit_line)
 		{
-			g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+			g->score += DEFEND_SCORE;
 		}
 	}
 	BITBOARD b1 = bit_kq_defends & bit_total_attacked[s] & bit_units[xs];
@@ -637,27 +615,17 @@ void AddBishopMove(const int s, const int xs, const int from, const int to, cons
 		if (bit_defendable && mask[from] & bit_unblock && !(mask[to] & bit_unblock))
 		{
 			int sq = unblock[from];
-			g->score += DEFEND_SCORE;// +piece_value[b[sq]];
+			g->score += DEFEND_SCORE;
 		}
 		if (mask[to] & bit_line)
 		{
-			g->score += DEFEND_SCORE;// +piece_value[b[block[attacker]]];
+			g->score += DEFEND_SCORE;
 		}
 	}
 	BITBOARD b1 = MagicBishopAttacks(to, bit_all) &
 		(bit_attackable[B] | (bit_kq_defends & bit_total_attacked[s] & bit_units[xs])) & ~bit_moves[B][from];
 	if (b1)
 	{
-		/*
-		if (b1 & ~bit_attackable[B])
-		{
-			PrintBitBoard(bit_kq_defends & bit_units[xs]);
-			PrintBitBoard(bit_total_attacked[s]);
-			printf("kq ");
-			Alg(from, to);
-			z();
-		}
-		*/
 		int sq = NextBit(b1);
 		g->score += piece_value[b[sq]] + ATTACK_SCORE;
 		g->flags |= ATTACK;
