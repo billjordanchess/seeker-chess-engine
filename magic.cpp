@@ -66,7 +66,6 @@ const int BBits[64] = {
 
 #include <vector>
 #include <cstdio>
-//#include "magics_data.h"
 
 #pragma once
 using U64 = unsigned long long;
@@ -88,7 +87,6 @@ struct MagicEntry {
 MagicEntry rookMag[64];
 MagicEntry bishopMag[64];
 
-// Fixed-size worst-case tables (match your earlier sizes)
 U64 rookAttTable[64 * 4096];
 U64 bishopAttTable[64 * 512];
 
@@ -115,7 +113,7 @@ U64 bishop_mask(int sq) {
     return m;
 }
 
-// OTF attacks (truth) — used only to build table
+// OTF attacks (truth) â€” used only to build table
 U64 rook_attacks_otf(int sq, U64 occ) {
     U64 a = 0ULL; int r = rank_of(sq), f = file_of(sq);
     for (int rr = r + 1; rr <= 7; ++rr) { U64 b = 1ULL << sq_of(rr, f); a |= b; if (occ & b) break; }
@@ -248,7 +246,6 @@ void TestQueenAttacks()
                 memset(bit_units, 0, sizeof(bit_units));
                 bit_all = 0;
             }
-            //
             bit_all = occ;
             b2 = bit_moves[Q][sq];
             b3 = b2 & bit_all;
@@ -260,12 +257,7 @@ void TestQueenAttacks()
                 b2 &= b4 | mask[sq2];
             }
             q2 = b2;
-            //
-            //PrintBitBoard(occ);
-            //PrintBitBoard(q1);
-            //Algebraic(sq);
-            //_getch();
-            //*
+            
             if (q1 != q2)
             {
                 printf("Mismatch sq=%d occ=%llx fast=%llx otf=%llx\n",
@@ -274,7 +266,6 @@ void TestQueenAttacks()
                     (unsigned long long)q2);
                 return;
             }
-            //*/
         }
     }
     printf("MagicQueenAttacks OK\n");
