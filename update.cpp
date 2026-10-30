@@ -1,4 +1,3 @@
-//11/9/26
 #pragma once
 #include "globals.h"
 
