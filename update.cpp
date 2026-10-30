@@ -94,12 +94,6 @@ void RemovePiece(const int s, const int piece, const int sq)
 	const int idx = index[sq];
 	const int last = total[s][piece] - 1;
 
-	if (pieces[s][piece][idx] != sq)
-	{
-		//Algebraic(sq);
-		//z();
-	}
-
 	assert(idx >= 0);
 	assert(idx <= last);
 	assert(pieces[s][piece][idx] == sq);
