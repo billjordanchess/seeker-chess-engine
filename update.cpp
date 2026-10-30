@@ -81,6 +81,8 @@ void RemovePiece(const int s, const int piece, const int sq)
 	const BITBOARD m = ~mask[sq];
 	bit_units[s] &= m;
 	bit_all &= m;
+
+	assert(piece < 6);
 	bit_pieces[s][piece] &= m;
 	AddKey(s, piece, sq);
 	b[sq] = EMPTY;
@@ -88,8 +90,20 @@ void RemovePiece(const int s, const int piece, const int sq)
 	table_score[s] -= PieceScore[s][piece][sq];
 	piece_mat[s] -= piece_value[piece];
 
+	assert(total[s][piece] > 0);
+
 	const int idx = index[sq];
 	const int last = total[s][piece] - 1;
+
+	if (pieces[s][piece][idx] != sq)
+	{
+		//Algebraic(sq);
+		//z();
+	}
+
+	assert(idx >= 0);
+	assert(idx <= last);
+	assert(pieces[s][piece][idx] == sq);
 
 	if (idx != last)
 	{
@@ -267,7 +281,7 @@ void MakeCapture(const int from, const int to, const int flags)
 	m->to = to;
 	m->piece = mover;
 	m->capture = b[to];
-	m->fifty = 0;
+	fifty = m->fifty;
 	m->hash = currentkey;
 	m->castle = castle;
 
@@ -351,6 +365,7 @@ void UnMakeCapture()
 void MakeEvasion(const int from, const int to)
 {
 	game* m = &game_list[hply];
+	m->piece = b[from];
 	m->flags = 0;
 	m->from = from;
 	m->to = to;
@@ -478,11 +493,12 @@ void UnMakeQuietMove()
 		const int from2 = castle_dest[to];
 		UpdatePiece(side, R, from2, to2);
 		KingScore[side][squares[side][E1]] = 10;
-		if (col[to] == 7)
+		if (col[to] == 6)
 		{
 			BeforeCastle(side);
 		}
 	}
+	assert(currentkey == m->hash);
 }
 
 void MakeCheck(const int from, const int to, const int flags)
