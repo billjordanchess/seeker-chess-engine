@@ -1,4 +1,3 @@
-//11/9/26
 #include "globals.h"
 
 constexpr int WHITE_KING_CASTLE = 1;
