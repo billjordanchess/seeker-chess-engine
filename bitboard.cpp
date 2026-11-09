@@ -1,4 +1,3 @@
-//11/9/26
 using namespace std;//
 
 #include "globals.h"
