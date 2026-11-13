@@ -3,4 +3,5 @@ Seeker is the latest incarnation of my C++ chess engine. Introduces magic bitboa
 The .exe file is included here, however the solution file is not ready yet.
 
 It features in my book, <i>How to Write a Modern Chess Engine</i>.
- available on Amazon.
+
+https://www.amazon.com/dp/B0HNHPZV6T?lv=shuf&channelId=500&plpRedirect=mhFallback&th=1
